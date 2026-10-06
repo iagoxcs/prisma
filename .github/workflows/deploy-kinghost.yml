@@ -55,6 +55,15 @@ jobs:
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      # A ação de FTP exige pasta terminada em "/": normaliza o secret e recusa valor vazio
+      # (pasta vazia publicaria na raiz da conta FTP).
+      - name: Pasta de destino
+        id: ftpdir
+        env:
+          DIR: ${{ secrets.KINGHOST_FTP_DIR }}
+        run: |
+          if [ -z "$DIR" ]; then echo "::error::Secret KINGHOST_FTP_DIR vazio"; exit 1; fi
+          echo "dir=${DIR%/}/" >> "$GITHUB_OUTPUT"
       - name: Enviar ./out por FTPS
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
@@ -63,4 +72,4 @@ jobs:
           password: ${{ secrets.KINGHOST_FTP_PASSWORD }}
           protocol: ftps
           local-dir: ./out/
-          server-dir: ${{ secrets.KINGHOST_FTP_DIR }}   # ex.: /public_html/ ou /www/
+          server-dir: ${{ steps.ftpdir.outputs.dir }}   # ex.: /public_html/ ou /www/
