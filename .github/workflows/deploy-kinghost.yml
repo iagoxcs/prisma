@@ -64,6 +64,18 @@ jobs:
         run: |
           if [ -z "$DIR" ]; then echo "::error::Secret KINGHOST_FTP_DIR vazio"; exit 1; fi
           echo "dir=${DIR%/}/" >> "$GITHUB_OUTPUT"
+      # Diagnóstico (só com FTP_LOG_LEVEL=verbose): lista os nomes na raiz da conta FTP e na pasta de destino.
+      - name: Listar pastas no FTP (diagnóstico)
+        if: vars.FTP_LOG_LEVEL == 'verbose'
+        continue-on-error: true
+        env:
+          FTP_HOST: ${{ secrets.KINGHOST_FTP_HOST }}
+          FTP_USER: ${{ secrets.KINGHOST_FTP_USER }}
+          FTP_PASS: ${{ secrets.KINGHOST_FTP_PASSWORD }}
+          DIR: ${{ steps.ftpdir.outputs.dir }}
+        run: |
+          echo "== raiz da conta"; curl -sS --ssl-reqd --list-only --user "$FTP_USER:$FTP_PASS" "ftp://$FTP_HOST/" || true
+          echo "== pasta de destino"; curl -sS --ssl-reqd --list-only --user "$FTP_USER:$FTP_PASS" "ftp://$FTP_HOST/$DIR" || true
       - name: Enviar ./out por FTPS
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
