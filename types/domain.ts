@@ -106,3 +106,19 @@ export interface Project {
   end_date: string | null;
   clients?: { name: string } | null;
 }
+
+export interface AppNotification {
+  id: string;
+  type: "task_assigned" | "due_soon" | "overdue" | "comment" | "mention";
+  entity_id: string;
+  project_id: string | null;
+  message: string;
+  read: boolean;
+  created_at: string;
+}
+
+export const notificationHref = (n: Pick<AppNotification, "project_id" | "entity_id">) =>
+  n.project_id ? `/projeto/?id=${n.project_id}&task=${n.entity_id}` : "/";
+
+// Data de hoje (YYYY-MM-DD) no fuso de Brasília.
+export const todayISO = () => new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" });

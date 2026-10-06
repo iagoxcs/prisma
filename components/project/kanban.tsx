@@ -1,80 +1,63 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getSupabase } from "@/lib/supabase/client";
-import { useQuery } from "@/lib/use-query";
 import { cn } from "@/lib/utils";
-import { TASK_STATUS_LABEL, type Category, type Person, type Task, type TaskStatus } from "@/types/domain";
-import { TaskPanel } from "./task-panel";
+import { TASK_STATUS_LABEL, todayISO, type Category, type Person, type Task, type TaskStatus } from "@/types/domain";
 
 const COLUMNS: TaskStatus[] = ["todo", "doing", "done"];
-const TASK_COLS = "id, project_id, category_id, title, description, status, assignee_id, start_date, due_date, position";
 
 export function Kanban({
   projectId,
+  tasks,
   categories,
   people,
   canCreate,
-  isExternal,
+  onOpen,
+  onChanged,
 }: {
   projectId: string;
+  tasks: Task[];
   categories: Category[];
   people: Person[];
   canCreate: boolean;
-  isExternal: boolean;
+  onOpen: (id: string) => void;
+  onChanged: () => void;
 }) {
-  const tasks = useQuery<Task[]>(
-    () => getSupabase().from("tasks").select(TASK_COLS).eq("project_id", projectId).order("position"),
-    [projectId],
-  );
   const [title, setTitle] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [openId, setOpenId] = useState<string | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
   const [filterAssignee, setFilterAssignee] = useState("");
   const [filterCategory, setFilterCategory] = useState("");
 
-  // Tempo real: qualquer mudança em tarefas do projeto recarrega o quadro.
-  const reload = tasks.reload;
-  useEffect(() => {
-    const supabase = getSupabase();
-    const channel = supabase
-      .channel(`tasks-${projectId}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "tasks", filter: `project_id=eq.${projectId}` }, () => reload())
-      .subscribe();
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [projectId, reload]);
-
   const nameOf = useMemo(() => new Map(people.map((p) => [p.id, p.name])), [people]);
   const category = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
 
-  const visible = (tasks.data ?? []).filter(
+  const visible = tasks.filter(
     (t) => (!filterAssignee || t.assignee_id === filterAssignee) && (!filterCategory || t.category_id === filterCategory),
   );
 
   async function add(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    const max = Math.max(0, ...(tasks.data ?? []).filter((t) => t.status === "todo").map((t) => t.position));
+    const max = Math.max(0, ...tasks.filter((t) => t.status === "todo").map((t) => t.position));
     const { error } = await getSupabase()
       .from("tasks")
       .insert({ project_id: projectId, title: title.trim(), position: max + 1 });
     if (error) return setError(error.message);
     setTitle("");
-    tasks.reload();
+    onChanged();
   }
 
   async function move(id: string, status: TaskStatus) {
-    const current = (tasks.data ?? []).find((t) => t.id === id);
+    const current = tasks.find((t) => t.id === id);
     if (!current || current.status === status) return;
-    const max = Math.max(0, ...(tasks.data ?? []).filter((t) => t.status === status).map((t) => t.position));
+    const max = Math.max(0, ...tasks.filter((t) => t.status === status).map((t) => t.position));
     const { error } = await getSupabase().from("tasks").update({ status, position: max + 1 }).eq("id", id);
     if (error) setError(error.message);
-    tasks.reload();
+    onChanged();
   }
 
   return (
@@ -99,7 +82,7 @@ export function Kanban({
           ))}
         </select>
       </div>
-      {(error || tasks.error) && <p role="alert" className="text-sm text-destructive">{error ?? tasks.error}</p>}
+      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
 
       <div className="grid gap-4 md:grid-cols-3">
         {COLUMNS.map((status) => {
@@ -121,14 +104,14 @@ export function Kanban({
               <ul className="space-y-2">
                 {items.map((t) => {
                   const cat = t.category_id ? category.get(t.category_id) : undefined;
-                  const overdue = t.due_date && status !== "done" && t.due_date < new Date().toISOString().slice(0, 10);
+                  const overdue = t.due_date && status !== "done" && t.due_date < todayISO();
                   return (
                     <li key={t.id}>
                       <button
                         type="button"
                         draggable
                         onDragStart={() => setDragId(t.id)}
-                        onClick={() => setOpenId(t.id)}
+                        onClick={() => onOpen(t.id)}
                         className="w-full rounded-lg border bg-background p-3 text-left text-sm shadow-xs hover:border-ring"
                       >
                         {cat && (
@@ -150,18 +133,6 @@ export function Kanban({
           );
         })}
       </div>
-
-      {openId && (
-        <TaskPanel
-          taskId={openId}
-          task={(tasks.data ?? []).find((t) => t.id === openId)}
-          categories={categories}
-          people={people}
-          isExternal={isExternal}
-          onClose={() => setOpenId(null)}
-          onChanged={tasks.reload}
-        />
-      )}
     </div>
   );
 }

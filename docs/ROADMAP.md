@@ -1,4 +1,4 @@
-# Roadmap e progresso
+﻿# Roadmap e progresso
 
 Legenda: ✅ feito · 🟡 parcial · ⬜ pendente
 
@@ -25,8 +25,14 @@ Legenda: ✅ feito · 🟡 parcial · ⬜ pendente
 - 🟡 Reordenação dentro da coluna (hoje o cartão movido vai para o fim)
 - 🟡 Compartilhar tarefa com externo (tabela `task_shares` pronta; falta interface)
 
-## Fase 3 — Cronograma e notificações (RF-12, 17–19)
-Gantt (decidir dependências — validação nº 11), central de notificações (gatilhos de atribuição e comentário já existem no banco), `pg_cron` para prazo próximo/vencido, menções.
+## Fase 3 — Cronograma e notificações (RF-12, 17–19) ✅
+- ✅ Gantt por período (sem dependências — decisão da v1; reavaliar na validação nº 11): aba **Cronograma** em cada projeto e **Cronograma de projetos** (portfólio)
+- ✅ Escala dia/semana/mês, linha de "hoje", cor por escopo, destaque de atrasadas; clicar abre a tarefa
+- ✅ Edição de status e período do projeto (gerente/admin)
+- ✅ Central de notificações: sino com contador em tempo real, lista rápida, página `/notificacoes/`, lida/não lida, excluir
+- ✅ Gatilhos: atribuição, novo comentário, prazo próximo (hoje/amanhã) e prazo vencido via `pg_cron` diário às 08:00 de Brasília
+- ⬜ Menções (@) em comentários
+- ⬜ Arrastar barras do Gantt para alterar datas
 
 ## Fase 4 — IA (RF-03–05, 13–16)
 `ai-gateway`, ferramentas restritas, auditoria, relatórios HTML. Depende das validações 1–5 e 10.
