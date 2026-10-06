@@ -73,3 +73,5 @@ jobs:
           protocol: ftps
           local-dir: ./out/
           server-dir: ${{ steps.ftpdir.outputs.dir }}   # ex.: /public_html/ ou /www/
+          # Diagnóstico: variável FTP_LOG_LEVEL=verbose no environment production mostra comandos e respostas do FTP.
+          log-level: ${{ vars.FTP_LOG_LEVEL || 'standard' }}
