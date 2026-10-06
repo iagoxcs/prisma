@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
-import { Bell, Briefcase, Building2, CalendarRange, LayoutDashboard, LogOut, Users } from "lucide-react";
+import { Bell, Briefcase, Building2, CalendarRange, LayoutDashboard, LogOut, Settings } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import { NotificationBell } from "@/components/notification-bell";
+import { OrgName } from "@/components/org-name";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ROLE_LABEL } from "@/types/domain";
@@ -16,7 +17,7 @@ const NAV = [
   { href: "/cronograma/", label: "Cronograma", icon: CalendarRange },
   { href: "/notificacoes/", label: "Notificações", icon: Bell },
   { href: "/clientes/", label: "Clientes", icon: Building2, internalOnly: true },
-  { href: "/usuarios/", label: "Usuários", icon: Users, internalOnly: true, adminOnly: true },
+  { href: "/configuracoes/", label: "Configurações", icon: Settings, internalOnly: true, adminOnly: true },
 ] as { href: string; label: string; icon: typeof Bell; internalOnly?: boolean; adminOnly?: boolean }[];
 
 // O gate é só UX: a segurança real é o RLS no banco.
@@ -53,7 +54,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-screen">
       <aside className="hidden w-56 shrink-0 flex-col border-r bg-sidebar p-4 md:flex">
-        <div className="mb-6 text-lg font-semibold tracking-tight">Prisma</div>
+        <div className="mb-6"><div className="text-lg font-semibold tracking-tight">Prisma</div><OrgName /></div>
         <nav className="flex flex-1 flex-col gap-1">
           {items.map(({ href, label, icon: Icon }) => (
             <Link

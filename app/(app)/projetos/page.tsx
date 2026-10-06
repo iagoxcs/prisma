@@ -56,6 +56,11 @@ export default function ProjetosPage() {
     if (error) return setError(error.message);
     // O gerente também aparece na lista de membros do projeto.
     await supabase.from("project_members").insert({ project_id: data.id, user_id: profile.id, project_role: "gerente" });
+    // Escopos padrão definidos em Configurações → Parâmetros.
+    const defaults = await supabase.from("app_settings").select("value").eq("key", "default_categories").maybeSingle();
+    if (Array.isArray(defaults.data?.value) && defaults.data.value.length > 0) {
+      await supabase.from("categories").insert((defaults.data.value as string[]).map((name) => ({ project_id: data.id, name })));
+    }
     setName("");
     setClientId("");
     setVersion((v) => v + 1);

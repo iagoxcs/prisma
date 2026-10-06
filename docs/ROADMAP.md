@@ -34,6 +34,14 @@ Legenda: ✅ feito · 🟡 parcial · ⬜ pendente
 - ⬜ Menções (@) em comentários
 - ⬜ Arrastar barras do Gantt para alterar datas
 
+## Módulo de Configurações (admin) ✅
+- ✅ `/configuracoes/` com 4 abas: **Parâmetros**, **Usuários**, **Perfis e permissões**, **Auditoria**
+- ✅ Parâmetros (tabela `app_settings`, validados no banco, alteração auditada): nome da organização, antecedência do alerta de prazo, liga/desliga alertas de prazo próximo e vencido, escopos padrão de novos projetos. Fixos por requisito (somente exibidos): anexo 20 MB, fuso, senha mínima
+- ✅ Usuários: busca e filtros, e-mail e último acesso, criar, editar nome/cargo, perfil, ativar/desativar, redefinir senha; o sistema nunca fica sem admin ativo
+- ✅ Matriz de perfis e permissões (somente leitura, espelha o RLS)
+- ✅ Auditoria: trilha de `activity_log` (projetos, tarefas, membros, parâmetros) com filtro
+- ⬜ Parâmetros futuros conforme as fases 4–5 (IA, metas de indicadores)
+
 ## Fase 4 — IA (RF-03–05, 13–16)
 `ai-gateway`, ferramentas restritas, auditoria, relatórios HTML. Depende das validações 1–5 e 10.
 
