@@ -1,8 +1,11 @@
 // Parâmetros do sistema (tabela app_settings). Chaves e validação vivem no banco
 // (trigger app_settings_before_update); aqui só os tipos e valores padrão da interface.
 
+// Single-tenant: uma instância, uma organização. O nome é fixo na interface
+// (não é parâmetro do banco; ver migração 20261006143438_identidade_visual).
+export const ORG_NAME = "Ambiente Consultoria";
+
 export interface AppSettings {
-  organization_name: string;
   deadline_warning_days: number;
   notify_due_soon: boolean;
   notify_overdue: boolean;
@@ -10,7 +13,6 @@ export interface AppSettings {
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  organization_name: "Ambiente Consultoria",
   deadline_warning_days: 1,
   notify_due_soon: true,
   notify_overdue: true,

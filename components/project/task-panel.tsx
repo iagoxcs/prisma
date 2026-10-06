@@ -1,12 +1,15 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
-import { X } from "lucide-react";
+import { useEffect, useState, type FormEvent } from "react";
+import { createPortal } from "react-dom";
+import { Download, Paperclip, X } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { dateTime } from "@/lib/format";
 import { getSupabase } from "@/lib/supabase/client";
+import { MSG_ERROR, SELECT_CLASS as BASE_SELECT, TEXTAREA_CLASS } from "@/lib/ui";
 import { useQuery } from "@/lib/use-query";
 import {
   MAX_ATTACHMENT_BYTES,
@@ -21,7 +24,7 @@ import {
 } from "@/types/domain";
 
 const BUCKET = "task-attachments";
-const SELECT_CLASS = "h-8 w-full rounded-lg border bg-background px-2 text-sm";
+const SELECT_CLASS = `${BASE_SELECT} w-full`;
 
 export function TaskPanel({
   taskId,
@@ -40,19 +43,29 @@ export function TaskPanel({
   onClose: () => void;
   onChanged: () => void;
 }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   if (!task) return null;
+  // Portal para o <body>: a lâmina (<main>) tem backdrop-filter, que prenderia o position: fixed dentro dela.
+  // O drawer é sólido (bg-popover), como os diálogos: vidro sobre o Kanban comprometia a leitura dos campos.
   // key força o formulário a reinicializar ao trocar de tarefa.
-  return (
-    <div className="fixed inset-0 z-40 flex justify-end bg-black/30" onClick={onClose}>
+  return createPortal(
+    <div className="fixed inset-0 z-40 flex justify-end bg-background/60 p-0 md:p-5" onClick={onClose}>
       <aside
         role="dialog"
+        aria-modal="true"
         aria-label="Detalhes da tarefa"
-        className="h-full w-full max-w-xl space-y-6 overflow-y-auto bg-background p-6 shadow-xl"
+        className="h-full w-full max-w-xl space-y-7 overflow-y-auto border-glass-edge bg-popover p-6 text-popover-foreground shadow-[var(--glass-shadow)] md:rounded-2xl md:border md:p-7"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex justify-end">
+        <div className="flex items-center justify-between">
+          <span className="text-[0.8125rem] font-medium text-muted-foreground">Detalhes da tarefa</span>
           <Button variant="ghost" size="icon" aria-label="Fechar" onClick={onClose}>
-            <X />
+            <X strokeWidth={1.75} />
           </Button>
         </div>
         <Details key={taskId} task={task} categories={categories} people={people} onChanged={onChanged} onClose={onClose} />
@@ -60,7 +73,8 @@ export function TaskPanel({
         <Attachments taskId={taskId} projectId={task.project_id} />
         <Comments taskId={taskId} isExternal={isExternal} />
       </aside>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -121,57 +135,56 @@ function Details({
   const set = (k: keyof typeof form, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
   return (
-    <form onSubmit={save} className="space-y-3">
-      <Input aria-label="Título" className="text-base font-semibold" required value={form.title} onChange={(e) => set("title", e.target.value)} />
+    <form onSubmit={save} className="space-y-4">
+      <Input aria-label="Título" className="h-12 text-lg font-semibold md:text-lg" required value={form.title} onChange={(e) => set("title", e.target.value)} />
       <textarea
         aria-label="Descrição"
         placeholder="Descrição"
         rows={4}
-        className="w-full rounded-lg border bg-background p-2 text-sm"
+        className={TEXTAREA_CLASS}
         value={form.description}
         onChange={(e) => set("description", e.target.value)}
       />
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1">
-          <Label>Status</Label>
-          <select className={SELECT_CLASS} value={form.status} onChange={(e) => set("status", e.target.value as TaskStatus)}>
+      <div className="grid grid-cols-1 gap-4 rounded-xl bg-secondary p-4 sm:grid-cols-2">
+        <div className="space-y-1.5">
+          <Label htmlFor="t-status">Status</Label>
+          <select id="t-status" className={SELECT_CLASS} value={form.status} onChange={(e) => set("status", e.target.value as TaskStatus)}>
             {(Object.keys(TASK_STATUS_LABEL) as TaskStatus[]).map((s) => (
               <option key={s} value={s}>{TASK_STATUS_LABEL[s]}</option>
             ))}
           </select>
         </div>
-        <div className="space-y-1">
-          <Label>Responsável</Label>
-          <select className={SELECT_CLASS} value={form.assignee_id} onChange={(e) => set("assignee_id", e.target.value)}>
+        <div className="space-y-1.5">
+          <Label htmlFor="t-assignee">Responsável</Label>
+          <select id="t-assignee" className={SELECT_CLASS} value={form.assignee_id} onChange={(e) => set("assignee_id", e.target.value)}>
             <option value="">Sem responsável</option>
             {people.map((p) => (
               <option key={p.id} value={p.id}>{p.name}</option>
             ))}
           </select>
         </div>
-        <div className="space-y-1">
-          <Label>Escopo</Label>
-          <select className={SELECT_CLASS} value={form.category_id} onChange={(e) => set("category_id", e.target.value)}>
+        <div className="space-y-1.5 sm:col-span-2">
+          <Label htmlFor="t-scope">Escopo</Label>
+          <select id="t-scope" className={SELECT_CLASS} value={form.category_id} onChange={(e) => set("category_id", e.target.value)}>
             <option value="">Sem escopo</option>
             {categories.map((c) => (
               <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </select>
         </div>
-        <div />
-        <div className="space-y-1">
-          <Label>Início</Label>
-          <Input type="date" value={form.start_date} onChange={(e) => set("start_date", e.target.value)} />
+        <div className="space-y-1.5">
+          <Label htmlFor="t-start">Início</Label>
+          <Input id="t-start" type="date" className="num" value={form.start_date} onChange={(e) => set("start_date", e.target.value)} />
         </div>
-        <div className="space-y-1">
-          <Label>Prazo</Label>
-          <Input type="date" value={form.due_date} onChange={(e) => set("due_date", e.target.value)} />
+        <div className="space-y-1.5">
+          <Label htmlFor="t-due">Prazo</Label>
+          <Input id="t-due" type="date" className="num" value={form.due_date} onChange={(e) => set("due_date", e.target.value)} />
         </div>
       </div>
-      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-      <div className="flex justify-between">
+      {error && <p role="alert" className={MSG_ERROR}>{error}</p>}
+      <div className="flex justify-between gap-2">
         <Button type="submit" disabled={busy}>{busy ? "Salvando…" : "Salvar"}</Button>
-        <Button type="button" variant="destructive" onClick={remove}>Excluir</Button>
+        <Button type="button" variant="ghost" className="text-destructive hover:text-destructive" onClick={remove}>Excluir tarefa</Button>
       </div>
     </form>
   );
@@ -210,24 +223,32 @@ function Checklist({ taskId }: { taskId: string }) {
   }
 
   return (
-    <section className="space-y-2">
-      <h3 className="text-sm font-semibold">Checklist {list.length > 0 && <span className="font-normal text-muted-foreground">({doneCount}/{list.length})</span>}</h3>
-      <ul className="space-y-1">
+    <section className="space-y-3">
+      <h3 className="flex items-center gap-2">
+        Checklist
+        {list.length > 0 && <span className="num text-sm font-normal text-muted-foreground">{doneCount}/{list.length}</span>}
+      </h3>
+      {list.length > 0 && (
+        <div className="h-1 overflow-hidden rounded-full bg-brand-shallow" role="progressbar" aria-valuemin={0} aria-valuemax={list.length} aria-valuenow={doneCount} aria-label="Progresso do checklist">
+          <div className="h-full rounded-full bg-status-doing transition-[width] duration-200" style={{ width: `${(doneCount / list.length) * 100}%` }} />
+        </div>
+      )}
+      <ul className="space-y-0.5">
         {list.map((i) => (
-          <li key={i.id} className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={i.done} onChange={() => toggle(i)} aria-label={i.text} />
+          <li key={i.id} className="flex min-h-11 items-center gap-3 text-sm">
+            <input type="checkbox" className="size-4 accent-primary" checked={i.done} onChange={() => toggle(i)} aria-label={i.text} />
             <span className={i.done ? "flex-1 text-muted-foreground line-through" : "flex-1"}>{i.text}</span>
-            <button type="button" aria-label="Remover item" className="text-muted-foreground hover:text-destructive" onClick={() => remove(i.id)}>
-              <X className="size-3.5" />
-            </button>
+            <Button variant="ghost" size="icon-sm" aria-label={`Remover item ${i.text}`} className="text-muted-foreground hover:text-destructive" onClick={() => remove(i.id)}>
+              <X strokeWidth={1.75} />
+            </Button>
           </li>
         ))}
       </ul>
       <form onSubmit={add} className="flex gap-2">
-        <Input placeholder="Novo item" required value={text} onChange={(e) => setText(e.target.value)} />
+        <Input placeholder="Novo item" aria-label="Novo item do checklist" required value={text} onChange={(e) => setText(e.target.value)} />
         <Button type="submit" variant="outline">Adicionar</Button>
       </form>
-      {(error || items.error) && <p role="alert" className="text-sm text-destructive">{error ?? items.error}</p>}
+      {(error || items.error) && <p role="alert" className={MSG_ERROR}>{error ?? items.error}</p>}
     </section>
   );
 }
@@ -290,38 +311,42 @@ function Attachments({ taskId, projectId }: { taskId: string; projectId: string 
   }
 
   return (
-    <section className="space-y-2">
-      <h3 className="text-sm font-semibold">Anexos</h3>
-      <ul className="space-y-1 text-sm">
+    <section className="space-y-3">
+      <h3>Anexos</h3>
+      <ul className="flex flex-col gap-2 text-sm">
         {(list.data ?? []).map((a) => (
-          <li key={a.id} className="flex items-center justify-between gap-2">
-            <button type="button" className="truncate text-left text-primary hover:underline" onClick={() => download(a)}>
-              {a.file_name}
+          <li key={a.id} className="surface-card flex min-h-11 items-center justify-between gap-2 py-1 pr-1 pl-3">
+            <button type="button" className="flex min-w-0 items-center gap-2 text-left font-medium hover:underline" onClick={() => download(a)}>
+              <Download className="size-4 shrink-0 text-brand-mid" strokeWidth={1.75} aria-hidden />
+              <span className="truncate">{a.file_name}</span>
             </button>
-            <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
-              {formatSize(a.size_bytes)}
+            <span className="flex shrink-0 items-center gap-1 text-muted-foreground">
+              <span className="num text-xs">{formatSize(a.size_bytes)}</span>
               {profile && !profile.is_external && (
-                <button type="button" aria-label="Remover anexo" className="hover:text-destructive" onClick={() => remove(a)}>
-                  <X className="size-3.5" />
-                </button>
+                <Button variant="ghost" size="icon-sm" aria-label={`Remover anexo ${a.file_name}`} className="hover:text-destructive" onClick={() => remove(a)}>
+                  <X strokeWidth={1.75} />
+                </Button>
               )}
             </span>
           </li>
         ))}
       </ul>
-      <input
-        type="file"
-        disabled={busy}
-        aria-label="Adicionar anexo"
-        className="text-sm"
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) upload(f);
-          e.target.value = "";
-        }}
-      />
-      <p className="text-xs text-muted-foreground">Qualquer formato, até 20 MB. Arquivos são sempre baixados, nunca abertos no navegador.</p>
-      {(error || list.error) && <p role="alert" className="text-sm text-destructive">{error ?? list.error}</p>}
+      <label className="surface-card flex min-h-11 cursor-pointer items-center gap-2 px-3 text-sm font-medium hover:bg-accent has-disabled:cursor-not-allowed has-disabled:opacity-50 has-focus-visible:outline-2 has-focus-visible:outline-ring">
+        <Paperclip className="size-4 text-brand-mid" strokeWidth={1.75} aria-hidden />
+        {busy ? "Enviando…" : "Adicionar anexo"}
+        <input
+          type="file"
+          disabled={busy}
+          className="sr-only"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) upload(f);
+            e.target.value = "";
+          }}
+        />
+      </label>
+      <p className="text-[0.8125rem] text-muted-foreground">Qualquer formato, até 20 MB. Arquivos são sempre baixados, nunca abertos no navegador.</p>
+      {(error || list.error) && <p role="alert" className={MSG_ERROR}>{error ?? list.error}</p>}
     </section>
   );
 }
@@ -351,29 +376,27 @@ function Comments({ taskId, isExternal }: { taskId: string; isExternal: boolean 
   }
 
   return (
-    <section className="space-y-2">
-      <h3 className="text-sm font-semibold">Comentários</h3>
-      <ul className="space-y-2">
+    <section className="space-y-3">
+      <h3>Comentários</h3>
+      <ul className="flex flex-col gap-2">
         {(list.data ?? []).map((c) => (
-          <li key={c.id} className="rounded-lg border p-2 text-sm">
-            <div className="mb-1 flex justify-between text-xs text-muted-foreground">
-              <span>
-                {c.profiles?.name ?? "—"}
-                {c.is_internal && <span className="ml-2 rounded bg-muted px-1.5 py-0.5">interno</span>}
-              </span>
-              <time dateTime={c.created_at}>{new Date(c.created_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}</time>
+          <li key={c.id} className="surface-card space-y-1.5 p-4 text-sm">
+            <div className="flex flex-wrap items-center gap-2 text-[0.8125rem] text-muted-foreground">
+              <span className="font-semibold text-foreground">{c.profiles?.name ?? "—"}</span>
+              {c.is_internal && <span className="rounded-md bg-secondary px-2 text-xs font-medium text-secondary-foreground">Interno</span>}
+              <time dateTime={c.created_at} className="num ml-auto text-xs">{dateTime(c.created_at)}</time>
             </div>
             <p className="whitespace-pre-wrap">{c.body}</p>
           </li>
         ))}
-        {list.data?.length === 0 && <li className="text-sm text-muted-foreground">Sem comentários.</li>}
+        {list.data?.length === 0 && <li className="text-sm text-muted-foreground">Sem comentários. Escreva o primeiro abaixo.</li>}
       </ul>
       <form onSubmit={add} className="space-y-2">
-        <textarea aria-label="Novo comentário" placeholder="Escreva um comentário" required rows={2} className="w-full rounded-lg border bg-background p-2 text-sm" value={body} onChange={(e) => setBody(e.target.value)} />
-        <div className="flex items-center justify-between">
+        <textarea aria-label="Novo comentário" placeholder="Escreva um comentário" required rows={2} className={TEXTAREA_CLASS} value={body} onChange={(e) => setBody(e.target.value)} />
+        <div className="flex items-center justify-between gap-2">
           {!isExternal ? (
-            <label className="flex items-center gap-2 text-xs">
-              <input type="checkbox" checked={internal} onChange={(e) => setInternal(e.target.checked)} /> Interno (oculto para externos)
+            <label className="flex min-h-11 items-center gap-2 text-[0.8125rem]">
+              <input type="checkbox" className="size-4 accent-primary" checked={internal} onChange={(e) => setInternal(e.target.checked)} /> Interno (oculto para externos)
             </label>
           ) : (
             <span />
@@ -381,7 +404,7 @@ function Comments({ taskId, isExternal }: { taskId: string; isExternal: boolean 
           <Button type="submit" variant="outline">Comentar</Button>
         </div>
       </form>
-      {(error || list.error) && <p role="alert" className="text-sm text-destructive">{error ?? list.error}</p>}
+      {(error || list.error) && <p role="alert" className={MSG_ERROR}>{error ?? list.error}</p>}
     </section>
   );
 }

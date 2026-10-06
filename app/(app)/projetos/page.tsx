@@ -3,11 +3,14 @@
 import Link from "next/link";
 import { useEffect, useState, type FormEvent } from "react";
 import { useAuth } from "@/components/auth-provider";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { shortDate } from "@/lib/format";
 import { getSupabase } from "@/lib/supabase/client";
-import { PROJECT_STATUS_LABEL, type Client, type Project } from "@/types/domain";
+import { OVERDUE_BADGE, PROJECT_STATUS_COLOR } from "@/lib/theme/status";
+import { MSG_ERROR, ROW_LIST, SELECT_CLASS } from "@/lib/ui";
+import { cn } from "@/lib/utils";
+import { PROJECT_STATUS_LABEL, todayISO, type Client, type Project } from "@/types/domain";
 
 export default function ProjetosPage() {
   const { profile } = useAuth();
@@ -20,6 +23,7 @@ export default function ProjetosPage() {
 
   const [version, setVersion] = useState(0);
   const isExternal = profile?.is_external ?? true;
+  const today = todayISO();
 
   useEffect(() => {
     let active = true;
@@ -68,13 +72,13 @@ export default function ProjetosPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">Projetos</h1>
+      <h1>Projetos</h1>
       {canCreate && (
         <form onSubmit={create} className="flex max-w-2xl flex-wrap gap-2">
           <Input className="min-w-48 flex-1" placeholder="Nome do projeto" required value={name} onChange={(e) => setName(e.target.value)} />
           <select
             aria-label="Cliente"
-            className="h-8 rounded-lg border bg-background px-2 text-sm"
+            className={SELECT_CLASS}
             value={clientId}
             onChange={(e) => setClientId(e.target.value)}
           >
@@ -86,20 +90,34 @@ export default function ProjetosPage() {
           <Button type="submit">Criar projeto</Button>
         </form>
       )}
-      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-      <ul className="divide-y rounded-lg border">
-        {projects.map((p) => (
-          <li key={p.id}>
-            <Link href={`/projeto/?id=${p.id}`} className="flex items-center justify-between px-4 py-3 text-sm hover:bg-muted">
-              <span>
-                <span className="font-medium">{p.name}</span>
-                {p.clients?.name && <span className="ml-2 text-muted-foreground">{p.clients.name}</span>}
-              </span>
-              <Badge variant="secondary">{PROJECT_STATUS_LABEL[p.status]}</Badge>
-            </Link>
-          </li>
-        ))}
-        {projects.length === 0 && <li className="px-4 py-6 text-sm text-muted-foreground">Nenhum projeto visível para você.</li>}
+      {error && <p role="alert" className={MSG_ERROR}>{error}</p>}
+      <ul className={ROW_LIST}>
+        {projects.map((p) => {
+          const overdue = !!p.end_date && p.end_date < today && p.status !== "concluido" && p.status !== "cancelado";
+          return (
+            <li key={p.id}>
+              <Link
+                href={`/projeto/?id=${p.id}`}
+                className="surface-card flex min-h-13 flex-wrap items-center justify-between gap-x-4 gap-y-1 px-4 py-3 text-sm transition-colors duration-150 hover:bg-accent"
+              >
+                <span className="flex min-w-0 flex-col">
+                  <span className="truncate text-[0.9375rem] font-medium">{p.name}</span>
+                  {p.clients?.name && <span className="truncate text-[0.8125rem] text-muted-foreground">{p.clients.name}</span>}
+                </span>
+                <span className="flex items-center gap-3">
+                  {overdue && <span className={cn("num rounded-md px-2.5 py-0.5 text-xs", OVERDUE_BADGE)}>vencido {shortDate(p.end_date!)}</span>}
+                  <span className="flex items-center gap-2">
+                    <span className="size-2 rounded-full" style={{ background: PROJECT_STATUS_COLOR[p.status] }} />
+                    {PROJECT_STATUS_LABEL[p.status]}
+                  </span>
+                </span>
+              </Link>
+            </li>
+          );
+        })}
+        {projects.length === 0 && (
+          <li className="text-sm text-muted-foreground">{canCreate ? "Nenhum projeto ainda. Crie o primeiro acima." : "Nenhum projeto visível para você."}</li>
+        )}
       </ul>
     </div>
   );

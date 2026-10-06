@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getSupabase } from "@/lib/supabase/client";
 
 export default function DashboardPage() {
@@ -20,14 +19,12 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">Olá, {profile?.name}</h1>
+      <h1>Olá, {profile?.name}</h1>
       <div className="grid gap-4 sm:grid-cols-3">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-medium text-muted-foreground">Projetos ativos</CardTitle>
-          </CardHeader>
-          <CardContent className="text-3xl font-semibold">{projects ?? "…"}</CardContent>
-        </Card>
+        <section className="glass-coluna space-y-1 p-5">
+          <h2 className="text-sm font-medium text-muted-foreground">Projetos ativos</h2>
+          <p className="num text-4xl font-medium tracking-tight">{projects ?? "…"}</p>
+        </section>
       </div>
       <p className="text-sm text-muted-foreground">
         Tarefas, Kanban, Gantt, notificações, IA e indicadores entram nas próximas fases (veja docs/ROADMAP.md).
