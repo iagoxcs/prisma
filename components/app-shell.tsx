@@ -98,7 +98,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       <div className="flex min-w-0 flex-1 flex-col gap-3">
         <header className="flex items-center justify-between gap-2 px-1 md:justify-end">
-          <nav className="flex gap-1 overflow-x-auto md:hidden" aria-label="Navegação">
+          <nav className="flex min-w-0 gap-1 overflow-x-auto [scrollbar-width:none] md:hidden [&::-webkit-scrollbar]:hidden" aria-label="Navegação">
             {items.map(({ href, label }) => (
               <Link
                 key={href}

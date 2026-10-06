@@ -37,7 +37,6 @@ function GeneralForm({ settings, lastUpdate, onSaved }: { settings: AppSettings;
     setBusy(true);
     setMsg(null);
     const next: AppSettings = {
-      organization_name: settings.organization_name, // single-tenant: não editável por tela
       deadline_warning_days: Number(days),
       notify_due_soon: soon,
       notify_overdue: overdue,

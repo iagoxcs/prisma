@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { brDate } from "@/lib/format";
 import { OVERDUE_BADGE } from "@/lib/theme/status";
 import { SEGMENTED, SEGMENT_ITEM } from "@/lib/ui";
@@ -18,6 +18,7 @@ export interface GanttRow {
 }
 
 const DAY_MS = 86_400_000;
+const LABEL_W = 224; // coluna fixa de nomes (w-56)
 const ZOOMS = { dia: 28, semana: 12, mês: 4 } as const;
 type Zoom = keyof typeof ZOOMS;
 
@@ -47,13 +48,21 @@ export function GanttChart({ rows, onSelect }: { rows: GanttRow[]; onSelect?: (i
   const total = last - first + 1;
   const width = total * px;
 
+  // Abre com "hoje" à vista (o período pode começar meses antes).
+  const scroller = useRef<HTMLDivElement>(null);
+  const todayLeft = (today - first) * px;
+  useEffect(() => {
+    const el = scroller.current;
+    if (el) el.scrollLeft = Math.max(0, todayLeft - (el.clientWidth - LABEL_W) / 3);
+  }, [todayLeft]);
+
   // Cabeçalho de meses.
   const months: { label: string; left: number; width: number }[] = [];
   for (let d = first; d <= last; d++) {
     const dt = fromDay(d);
     if (months.length === 0 || dt.getUTCDate() === 1) {
       months.push({
-        label: dt.toLocaleDateString("pt-BR", { month: "short", year: "numeric", timeZone: "UTC" }).replace(".", ""),
+        label: dt.toLocaleDateString("pt-BR", { month: "short", year: "numeric", timeZone: "UTC" }).replace(".", "").replace(" de ", " "),
         left: (d - first) * px,
         width: 0,
       });
@@ -84,10 +93,10 @@ export function GanttChart({ rows, onSelect }: { rows: GanttRow[]; onSelect?: (i
         </div>
       </div>
 
-      <div className="glass-coluna overflow-x-auto">
-        <div className="flex" style={{ minWidth: 256 + width }}>
+      <div ref={scroller} className="glass-coluna overflow-x-auto [scrollbar-width:thin]">
+        <div className="flex" style={{ minWidth: LABEL_W + width }}>
           {/* Coluna fixa: sólida (popover) para não deixar as barras aparecerem por baixo ao rolar */}
-          <div className="sticky left-0 z-10 w-64 shrink-0 border-r bg-popover">
+          <div className="sticky left-0 z-10 w-56 shrink-0 border-r bg-popover">
             <div className="h-14 border-b" />
             {scheduled.map((r) => (
               <button
@@ -109,7 +118,7 @@ export function GanttChart({ rows, onSelect }: { rows: GanttRow[]; onSelect?: (i
           <div className="relative" style={{ width }}>
             <div className="relative h-7 border-b">
               {months.map((m, i) => (
-                <div key={i} className="absolute top-0 h-7 border-l px-1.5 text-xs font-medium leading-7" style={{ left: m.left, width: m.width }}>
+                <div key={i} title={m.label} className="absolute top-0 h-7 truncate border-l px-1.5 text-xs font-medium leading-7 whitespace-nowrap" style={{ left: m.left, width: m.width }}>
                   {m.label}
                 </div>
               ))}

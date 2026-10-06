@@ -89,7 +89,7 @@ export function Kanban({
       </div>
       {error && <p role="alert" className={MSG_ERROR}>{error}</p>}
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 lg:grid-cols-3">
         {COLUMNS.map((status) => {
           const items = visible.filter((t) => t.status === status);
           return (
@@ -129,7 +129,7 @@ export function Kanban({
                           </span>
                         )}
                         <span className={cn("text-[0.9375rem] font-medium", status === "done" && "text-muted-foreground")}>{t.title}</span>
-                        <span className="flex items-center gap-2 text-[0.8125rem] text-muted-foreground">
+                        <span className="flex flex-wrap items-center gap-2 text-[0.8125rem] text-muted-foreground">
                           {assignee ? (
                             <span title={assignee} className="num flex size-7 items-center justify-center rounded-full bg-brand-shallow text-xs text-foreground">
                               {initials(assignee)}
@@ -139,9 +139,9 @@ export function Kanban({
                           )}
                           {t.due_date &&
                             (overdue ? (
-                              <span className={cn("num ml-auto rounded-md px-2.5 py-0.5 text-xs", OVERDUE_BADGE)}>vencida {shortDate(t.due_date)}</span>
+                              <span className={cn("num ml-auto rounded-md px-2.5 py-0.5 text-xs whitespace-nowrap", OVERDUE_BADGE)}>vencida {shortDate(t.due_date)}</span>
                             ) : (
-                              <span className="num ml-auto flex items-center gap-1 text-xs">
+                              <span className="num ml-auto flex items-center gap-1 text-xs whitespace-nowrap">
                                 <CalendarDays className="size-3.5" strokeWidth={1.75} aria-hidden />
                                 {shortDate(t.due_date)}
                               </span>

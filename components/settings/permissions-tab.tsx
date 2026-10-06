@@ -30,7 +30,7 @@ export function PermissionsTab() {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b text-left text-sm text-muted-foreground">
-              <th className="px-4 py-3 font-medium">Capacidade</th>
+              <th className="min-w-56 px-4 py-3 font-medium">Capacidade</th>
               {ORDER.map((r) => (
                 <th key={r} className="px-3 py-3 text-center font-medium">{ROLE_LABEL[r]}</th>
               ))}

@@ -50,16 +50,16 @@ export function TaskPanel({
   }, [onClose]);
 
   if (!task) return null;
-  // Portal para o <body>: a lâmina (<main>) tem backdrop-filter, que prenderia o position: fixed
-  // dentro dela e aninharia o blur do drawer. Fora dela, o drawer é um glass-painel legítimo.
+  // Portal para o <body>: a lâmina (<main>) tem backdrop-filter, que prenderia o position: fixed dentro dela.
+  // O drawer é sólido (bg-popover), como os diálogos: vidro sobre o Kanban comprometia a leitura dos campos.
   // key força o formulário a reinicializar ao trocar de tarefa.
   return createPortal(
-    <div className="fixed inset-0 z-40 flex justify-end bg-background/40 p-0 md:p-5" onClick={onClose}>
+    <div className="fixed inset-0 z-40 flex justify-end bg-background/60 p-0 md:p-5" onClick={onClose}>
       <aside
         role="dialog"
         aria-modal="true"
         aria-label="Detalhes da tarefa"
-        className="glass-painel h-full w-full max-w-xl space-y-7 overflow-y-auto rounded-none p-6 md:rounded-2xl md:p-7"
+        className="h-full w-full max-w-xl space-y-7 overflow-y-auto border-glass-edge bg-popover p-6 text-popover-foreground shadow-[var(--glass-shadow)] md:rounded-2xl md:border md:p-7"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">
@@ -145,7 +145,7 @@ function Details({
         value={form.description}
         onChange={(e) => set("description", e.target.value)}
       />
-      <div className="glass-coluna grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 rounded-xl bg-secondary p-4 sm:grid-cols-2">
         <div className="space-y-1.5">
           <Label htmlFor="t-status">Status</Label>
           <select id="t-status" className={SELECT_CLASS} value={form.status} onChange={(e) => set("status", e.target.value as TaskStatus)}>

@@ -78,11 +78,11 @@ Regras:
 
 | Camada | Utilitário | Blur | Onde usar |
 |---|---|---|---|
-| Painel | `glass-painel` | Sim | Navegação lateral, painéis laterais fixos (lista de projetos, detalhes da tarefa em drawer) |
+| Painel | `glass-painel` | Sim | Navegação lateral e painéis laterais fixos que não se sobrepõem ao conteúdo |
 | Lâmina | `glass-lamina` | Sim | Área de trabalho principal (já aplicada no `AppShell` ao `<main>`), telas de login e acesso |
 | Coluna | `glass-coluna` | **Não** | Agrupadores dentro da lâmina: colunas do Kanban, seções de formulário, blocos de indicadores |
 | Card | `surface-card` | **Não** | Itens repetidos: cards de tarefa, linhas, itens de lista, comentários |
-| Popover / diálogo | `bg-popover` (shadcn) | Não | Menus, selects, diálogos e toasts são **sólidos** |
+| Popover / diálogo | `bg-popover` (shadcn) | Não | Menus, selects, diálogos, toasts e drawers sobrepostos à lâmina (ex.: detalhes da tarefa) são **sólidos** |
 
 ### 3.2 Regras
 
