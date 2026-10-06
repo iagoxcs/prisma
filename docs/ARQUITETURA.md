@@ -6,8 +6,8 @@ Complementa `REQUISITOS.md` (v1.0). Aqui ficam as decisões de implementação t
 
 | Tema | Levantamento | Implementado | Motivo |
 |---|---|---|---|
-| Hospedagem | Vercel / Cloudflare Pages | **KingHost (compartilhada)** | Decisão do projeto |
-| Next.js | App Router com SSR possível | **Export estático** (`output: "export"`) | Hospedagem compartilhada não executa Node |
+| Hospedagem | Vercel / Cloudflare Pages | **Netlify (site estático)** | KingHost tentada em 06/10/2026, sem site/DNS disponível; ver `DEPLOY.md` |
+| Next.js | App Router com SSR possível | **Export estático** (`output: "export"`) | Hospedagem só de arquivos estáticos (sem Node) |
 | Rotas dinâmicas | `[id]` | Query string (`/projeto/?id=`) | Limitação do export estático |
 | Cliente Supabase | server + browser | Somente browser | Sem servidor Next |
 | Colunas | Misto PT/EN | Inglês (`title`, `name`, `body`…) | Consistência no código; UI continua em pt-BR |
@@ -18,7 +18,7 @@ Complementa `REQUISITOS.md` (v1.0). Aqui ficam as decisões de implementação t
 ## Camadas
 
 ```
-Navegador (site estático na KingHost)
+Navegador (site estático no Netlify)
    │ supabase-js (JWT do usuário)           │ chamadas à IA (Fase 4)
    ▼                                        ▼
 Supabase: Auth · Postgres (RLS) · Storage · Realtime      Edge Function ai-gateway

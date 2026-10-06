@@ -1,0 +1,12 @@
+# Netlify — copiado para a raiz do site no build estático (equivale ao .htaccess da KingHost).
+# HTTPS e redirecionamento http → https são automáticos no Netlify.
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+  Strict-Transport-Security: max-age=31536000
+
+# Assets com hash do Next podem ser cacheados "para sempre"; HTML o Netlify já revalida a cada acesso.
+/_next/static/*
+  Cache-Control: public, max-age=31536000, immutable
