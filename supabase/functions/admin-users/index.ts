@@ -36,6 +36,15 @@ Deno.serve(async (req) => {
     return json({ error: "JSON inválido" }, 400);
   }
 
+  // Lista e-mail e último acesso (dados que o client não enxerga: ficam em auth.users).
+  if (body.action === "list") {
+    const { data, error } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+    if (error) return json({ error: error.message }, 500);
+    return json({
+      users: data.users.map((u) => ({ id: u.id, email: u.email, last_sign_in_at: u.last_sign_in_at })),
+    });
+  }
+
   const password = body.password ?? "";
   if (password.length < 10) {
     return json({ error: "a senha deve ter ao menos 10 caracteres" }, 400);
