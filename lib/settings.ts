@@ -2,7 +2,7 @@
 // (trigger app_settings_before_update); aqui só os tipos e valores padrão da interface.
 
 // Single-tenant: uma instância, uma organização. O nome é fixo na interface
-// (não é parâmetro do banco; ver migração 20261006030000_identidade_visual).
+// (não é parâmetro do banco; ver migração 20261006143438_identidade_visual).
 export const ORG_NAME = "Ambiente Consultoria";
 
 export interface AppSettings {
