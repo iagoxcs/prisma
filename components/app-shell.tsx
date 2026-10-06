@@ -3,18 +3,21 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
-import { Briefcase, Building2, LayoutDashboard, LogOut, Users } from "lucide-react";
+import { Bell, Briefcase, Building2, CalendarRange, LayoutDashboard, LogOut, Users } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
+import { NotificationBell } from "@/components/notification-bell";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ROLE_LABEL } from "@/types/domain";
 
 const NAV = [
-  { href: "/", label: "Painel", icon: LayoutDashboard, internalOnly: false },
-  { href: "/projetos/", label: "Projetos", icon: Briefcase, internalOnly: false },
+  { href: "/", label: "Painel", icon: LayoutDashboard },
+  { href: "/projetos/", label: "Projetos", icon: Briefcase },
+  { href: "/cronograma/", label: "Cronograma", icon: CalendarRange },
+  { href: "/notificacoes/", label: "Notificações", icon: Bell },
   { href: "/clientes/", label: "Clientes", icon: Building2, internalOnly: true },
   { href: "/usuarios/", label: "Usuários", icon: Users, internalOnly: true, adminOnly: true },
-];
+] as { href: string; label: string; icon: typeof Bell; internalOnly?: boolean; adminOnly?: boolean }[];
 
 // O gate é só UX: a segurança real é o RLS no banco.
 export function AppShell({ children }: { children: ReactNode }) {
@@ -44,31 +47,24 @@ export function AppShell({ children }: { children: ReactNode }) {
     );
   }
 
-  const items = NAV.filter(
-    (i) => (!i.internalOnly || !profile.is_external) && (!("adminOnly" in i) || profile.role === "admin"),
-  );
+  const items = NAV.filter((i) => (!i.internalOnly || !profile.is_external) && (!i.adminOnly || profile.role === "admin"));
+  const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href.replace(/\/$/, "")));
 
   return (
     <div className="flex min-h-screen">
       <aside className="hidden w-56 shrink-0 flex-col border-r bg-sidebar p-4 md:flex">
         <div className="mb-6 text-lg font-semibold tracking-tight">Prisma</div>
         <nav className="flex flex-1 flex-col gap-1">
-          {items.map(({ href, label, icon: Icon }) => {
-            const active = href === "/" ? pathname === "/" : pathname.startsWith(href.replace(/\/$/, ""));
-            return (
-              <Link
-                key={href}
-                href={href}
-                className={cn(
-                  "flex items-center gap-2 rounded-lg px-3 py-2 text-sm hover:bg-muted",
-                  active && "bg-muted font-medium",
-                )}
-              >
-                <Icon className="size-4" />
-                {label}
-              </Link>
-            );
-          })}
+          {items.map(({ href, label, icon: Icon }) => (
+            <Link
+              key={href}
+              href={href}
+              className={cn("flex items-center gap-2 rounded-lg px-3 py-2 text-sm hover:bg-muted", isActive(href) && "bg-muted font-medium")}
+            >
+              <Icon className="size-4" />
+              {label}
+            </Link>
+          ))}
         </nav>
         <div className="border-t pt-3 text-xs">
           <div className="font-medium">{profile.name}</div>
@@ -78,7 +74,20 @@ export function AppShell({ children }: { children: ReactNode }) {
           </Button>
         </div>
       </aside>
-      <main className="flex-1 p-6 md:p-8">{children}</main>
+
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="flex items-center justify-between gap-2 border-b px-4 py-2 md:justify-end md:px-8">
+          <nav className="flex gap-1 overflow-x-auto md:hidden" aria-label="Navegação">
+            {items.map(({ href, label }) => (
+              <Link key={href} href={href} className={cn("shrink-0 rounded-lg px-2.5 py-1.5 text-sm hover:bg-muted", isActive(href) && "bg-muted font-medium")}>
+                {label}
+              </Link>
+            ))}
+          </nav>
+          <NotificationBell />
+        </header>
+        <main className="min-w-0 flex-1 p-4 md:p-8">{children}</main>
+      </div>
     </div>
   );
 }
