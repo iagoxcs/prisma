@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
-import { Briefcase, Building2, LayoutDashboard, LogOut } from "lucide-react";
+import { Briefcase, Building2, LayoutDashboard, LogOut, Users } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -13,6 +13,7 @@ const NAV = [
   { href: "/", label: "Painel", icon: LayoutDashboard, internalOnly: false },
   { href: "/projetos/", label: "Projetos", icon: Briefcase, internalOnly: false },
   { href: "/clientes/", label: "Clientes", icon: Building2, internalOnly: true },
+  { href: "/usuarios/", label: "Usuários", icon: Users, internalOnly: true, adminOnly: true },
 ];
 
 // O gate é só UX: a segurança real é o RLS no banco.
@@ -43,7 +44,9 @@ export function AppShell({ children }: { children: ReactNode }) {
     );
   }
 
-  const items = NAV.filter((i) => !i.internalOnly || !profile.is_external);
+  const items = NAV.filter(
+    (i) => (!i.internalOnly || !profile.is_external) && (!("adminOnly" in i) || profile.role === "admin"),
+  );
 
   return (
     <div className="flex min-h-screen">

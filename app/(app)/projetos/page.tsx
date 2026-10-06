@@ -47,10 +47,15 @@ export default function ProjetosPage() {
     e.preventDefault();
     if (!profile) return;
     setError(null);
-    const { error } = await getSupabase()
+    const supabase = getSupabase();
+    const { data, error } = await supabase
       .from("projects")
-      .insert({ name: name.trim(), client_id: clientId || null, manager_id: profile.id });
+      .insert({ name: name.trim(), client_id: clientId || null, manager_id: profile.id })
+      .select("id")
+      .single();
     if (error) return setError(error.message);
+    // O gerente também aparece na lista de membros do projeto.
+    await supabase.from("project_members").insert({ project_id: data.id, user_id: profile.id, project_role: "gerente" });
     setName("");
     setClientId("");
     setVersion((v) => v + 1);

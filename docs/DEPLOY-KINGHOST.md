@@ -3,9 +3,9 @@
 O build gera a pasta `out/` (HTML/JS/CSS). Basta publicá-la na raiz do site; não há processo Node no servidor.
 
 ## 1. Supabase
-1. `supabase login` e `supabase link --project-ref <ref>` (use projetos **separados** para dev e prod).
-2. `supabase db push` aplica as migrações.
-3. Crie o primeiro usuário em Authentication → Users, depois no SQL Editor:
+1. O projeto Supabase já está aplicado via MCP. Para trabalhar pela CLI: `supabase link --project-ref jipaumhvkldxnmwfdmji`. Obs.: a CLI e o histórico remoto usam versões de migração por timestamp; a migração `fix_select_after_insert` foi aplicada remotamente com versão própria — ao usar `supabase db pull`/`migration repair`, alinhe os nomes.
+2. `supabase functions deploy admin-users` publica a função de administração de usuários (já publicada no projeto atual).
+3. Crie o primeiro usuário em Authentication → Users (marque *Auto Confirm*) e, no SQL Editor, promova-o. Os demais são criados na tela **Usuários** do próprio Prisma (Edge Function `admin-users`):
    ```sql
    update public.profiles set role = 'admin', active = true where id = '<uuid-do-usuario>';
    ```

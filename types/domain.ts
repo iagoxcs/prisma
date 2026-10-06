@@ -43,6 +43,59 @@ export interface Client {
   status: "ativo" | "inativo";
 }
 
+export interface Category {
+  id: string;
+  project_id: string;
+  name: string;
+  color: string;
+}
+
+export interface Task {
+  id: string;
+  project_id: string;
+  category_id: string | null;
+  title: string;
+  description: string | null;
+  status: TaskStatus;
+  assignee_id: string | null;
+  start_date: string | null;
+  due_date: string | null;
+  position: number;
+}
+
+export interface ChecklistItem {
+  id: string;
+  task_id: string;
+  text: string;
+  done: boolean;
+  position: number;
+}
+
+export interface Attachment {
+  id: string;
+  task_id: string;
+  storage_path: string;
+  file_name: string;
+  size_bytes: number;
+}
+
+export interface TaskComment {
+  id: string;
+  task_id: string;
+  author_id: string | null;
+  body: string;
+  is_internal: boolean;
+  created_at: string;
+  profiles?: { name: string } | null;
+}
+
+export interface Person {
+  id: string;
+  name: string;
+}
+
+export const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024; // RF-09
+
 export interface Project {
   id: string;
   client_id: string | null;
