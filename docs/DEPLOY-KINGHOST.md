@@ -1,27 +1,89 @@
-# Deploy na KingHost (site estático)
+# Deploy em produção (KingHost + Supabase)
 
-O build gera a pasta `out/` (HTML/JS/CSS). Basta publicá-la na raiz do site; não há processo Node no servidor.
+O build gera a pasta `out/` (HTML/JS/CSS). Ela é publicada na raiz do site; não há processo Node no servidor.
+Banco, autenticação, arquivos e Edge Functions ficam no Supabase.
 
-## 1. Supabase
-1. O projeto Supabase já está aplicado via MCP. Para trabalhar pela CLI: `supabase link --project-ref jipaumhvkldxnmwfdmji`. Obs.: a CLI e o histórico remoto usam versões de migração por timestamp; a migração `fix_select_after_insert` foi aplicada remotamente com versão própria — ao usar `supabase db pull`/`migration repair`, alinhe os nomes.
-2. `supabase functions deploy admin-users` publica a função de administração de usuários (já publicada no projeto atual).
-3. Crie o primeiro usuário em Authentication → Users (marque *Auto Confirm*) e, no SQL Editor, promova-o. Os demais são criados na tela **Usuários** do próprio Prisma (Edge Function `admin-users`):
-   ```sql
-   update public.profiles set role = 'admin', active = true where id = '<uuid-do-usuario>';
-   ```
-4. Authentication → URL Configuration: **Site URL** = `https://<seu-dominio>`; adicione-o em Redirect URLs.
-5. Desative cadastro aberto (já em `config.toml`; replique no painel de produção). Ative backups no projeto de produção (RNF-06).
+**Fluxo automático:** cada merge em `main` dispara o workflow *Deploy produção* (`.github/workflows/deploy-kinghost.yml`):
 
-## 2. Variáveis
-Somente `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY` (públicas por desenho). Elas são embutidas **no build** — trocar de projeto Supabase exige novo build.
+1. **Supabase:** aplica as migrações pendentes de `supabase/migrations/` (`supabase db push`) e publica as Edge Functions.
+2. **Site:** só se o passo 1 passar, roda lint, typecheck e build e envia `out/` por FTPS para a KingHost.
 
-## 3. Publicação
-**Automática (recomendada):** em GitHub → Settings → Secrets (environment `production`) crie
-`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `KINGHOST_FTP_HOST`, `KINGHOST_FTP_USER`, `KINGHOST_FTP_PASSWORD`, `KINGHOST_FTP_DIR`; depois rode o workflow *Deploy KingHost*.
+Um deploy por vez, na ordem dos merges. Também dá para rodar manualmente em GitHub → Actions → *Deploy produção* → *Run workflow*.
 
-**Manual:** `npm run build` e envie o conteúdo de `out/` (incluindo o `.htaccess`) para a pasta pública via FTP.
+---
 
-## 4. Verificações
-- Domínio com HTTPS ativo (o `.htaccess` redireciona HTTP → HTTPS; confirme o SSL no painel da KingHost).
+## 1. Domínio próprio (uma vez)
+
+### 1.1 Hospedagem na KingHost
+1. No painel da KingHost, contrate/adicione o domínio (ex.: `prisma.ambienteconsultoria.com.br`) a um plano de hospedagem de site.
+2. Anote no painel: **endereço IP do servidor**, **host FTP**, **usuário FTP** e a **pasta pública** do site (ex.: `/www/` ou `/public_html/`). Defina ou redefina a senha FTP ali.
+
+### 1.2 DNS
+Os valores vêm do painel da KingHost (não são gerados pelo projeto). Duas opções:
+
+- **DNS gerenciado pela KingHost:** no registro do domínio (Registro.br ou outro), troque os *nameservers* pelos que o painel da KingHost indicar. A KingHost cria os registros sozinha.
+- **DNS em outro provedor** (Cloudflare, Registro.br etc.): crie os registros apontando para o IP do item 1.1.
+
+  | Tipo | Nome | Valor |
+  |---|---|---|
+  | `A` | `prisma` (subdomínio) ou `@` (domínio raiz) | IP do servidor KingHost |
+  | `CNAME` | `www` (só se usar domínio raiz) | o domínio raiz |
+
+  Na Cloudflare, deixe o registro como *DNS only* (nuvem cinza) até o SSL estar emitido.
+
+A propagação leva de minutos a algumas horas. Para conferir: `nslookup <seu-dominio>`.
+
+### 1.3 HTTPS
+Depois que o DNS propagar, ative o certificado SSL gratuito (Let's Encrypt) no painel da KingHost para o domínio.
+O `public/.htaccess` (copiado para `out/` no build) já redireciona HTTP → HTTPS e define cache e cabeçalhos de segurança.
+
+### 1.4 Supabase Auth
+Supabase → Authentication → URL Configuration:
+- **Site URL:** `https://<seu-dominio>`
+- **Redirect URLs:** `https://<seu-dominio>/**`
+
+Mantenha o cadastro aberto desativado (Authentication → Sign In / Providers → *Allow new users to sign up* desligado) e ative backups (RNF-06).
+
+---
+
+## 2. Segredos do GitHub (uma vez)
+
+GitHub → Settings → Environments → **production** → *Environment secrets*. Recomendado: em *Deployment branches*, permitir só `main`.
+
+| Secret | Onde obter |
+|---|---|
+| `SUPABASE_ACCESS_TOKEN` | supabase.com → Account → Access Tokens → *Generate new token* |
+| `SUPABASE_DB_PASSWORD` | Senha do banco (Project Settings → Database; dá para redefinir ali) |
+| `SUPABASE_PROJECT_REF` | `jipaumhvkldxnmwfdmji` |
+| `NEXT_PUBLIC_SUPABASE_URL` | `https://jipaumhvkldxnmwfdmji.supabase.co` |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Project Settings → API Keys → chave `anon`/publishable (pública por desenho) |
+| `KINGHOST_FTP_HOST` | Painel KingHost (item 1.1) |
+| `KINGHOST_FTP_USER` | Painel KingHost |
+| `KINGHOST_FTP_PASSWORD` | Painel KingHost |
+| `KINGHOST_FTP_DIR` | Pasta pública, com barra no fim (ex.: `/www/`) |
+
+Pela linha de comando (o valor é pedido de forma oculta):
+```bash
+gh secret set SUPABASE_ACCESS_TOKEN --env production
+```
+
+Nunca use a chave `service_role` em nenhum desses secrets nem no front.
+
+---
+
+## 3. Regras para o deploy automático funcionar
+
+- **Schema só por migração.** Alteração feita no painel do Supabase não entra no histórico e some no próximo ambiente.
+- **Histórico alinhado:** cada versão registrada no Supabase precisa existir em `supabase/migrations/` com o mesmo número. Migração aplicada pelo MCP (`apply_migration`) é registrada com o horário da aplicação; renomeie o arquivo para a versão de `list_migrations`. Se o histórico divergir, `supabase db push` falha e o site **não** é publicado (seguro, mas trava o deploy).
+- **Primeiro usuário:** crie em Authentication → Users (*Auto Confirm*) e promova no SQL Editor; os demais entram pela tela Configurações → Usuários:
+  ```sql
+  update public.profiles set role = 'admin', active = true where id = '<uuid-do-usuario>';
+  ```
+
+## 4. Publicação manual (contingência)
+`npm run build` com as variáveis `NEXT_PUBLIC_*` de produção e envio do conteúdo de `out/` (incluindo `.htaccess`) para a pasta pública via FTP.
+
+## 5. Verificações após o primeiro deploy
+- `https://<seu-dominio>` abre com cadeado; `http://` redireciona para `https://`.
 - Abrir `/projetos/` direto na barra de endereço funciona (cada rota é uma pasta com `index.html`).
-- Edge Functions (Fase 4) ficam no Supabase — não dependem da KingHost.
+- Login funciona (se falhar com erro de redirecionamento, revise o item 1.4).
