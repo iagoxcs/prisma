@@ -4,6 +4,7 @@
 
 Ferramenta interna, **single-tenant** (sem `tenant_id`). Especificação completa: `docs/REQUISITOS.md`.
 Decisões e arquitetura: `docs/ARQUITETURA.md`. Fases: `docs/ROADMAP.md`. Deploy: `docs/DEPLOY-KINGHOST.md`.
+Identidade visual: `docs/IDENTIDADE-VISUAL.md`.
 
 ## Stack
 Next.js (App Router) + TypeScript + Tailwind + shadcn/ui · Supabase (Auth, Postgres+RLS, Storage, Realtime, Edge Functions, pg_cron) · publicação **estática** na KingHost.
@@ -16,6 +17,14 @@ Next.js (App Router) + TypeScript + Tailwind + shadcn/ui · Supabase (Auth, Post
 - Anexos: bucket privado, URL assinada, sempre download (nunca inline). HTML de relatório: `<iframe sandbox>` sem script.
 - A IA opera com o JWT do usuário (RLS aplica); sem SQL arbitrário, sem exclusões; escrita registrada em `ai_actions_log`.
 - Autorização vive no banco. Guardas no front (AppShell) são só UX.
+
+## Identidade visual (inegociável, detalhes em `docs/IDENTIDADE-VISUAL.md`)
+- Cores **só por token** (`bg-primary`, `text-muted-foreground`, `bg-status-doing`, `text-warning`…). Proibido hex, `rgb()` e cores nomeadas do Tailwind (`blue-600`, `red-500`) em componentes. Valores vivem apenas em `app/globals.css`.
+- Status de projeto/tarefa **só** via `lib/theme/status.ts`. Sem vermelho/verde para status; atraso = âmbar (`warning`) + texto.
+- Vidro em camadas: `glass-painel` (navegação/painéis) e `glass-lamina` (área de trabalho) têm blur; dentro delas, só `glass-coluna` e `surface-card` (sem blur). **Nunca aninhar `backdrop-filter`; nunca blur em item repetido** (cards, linhas, listas com Realtime). Popovers e diálogos são sólidos.
+- Tipografia: Red Hat Display (interface) e Red Hat Mono **só para dados** (utilitário `num`). Sem peso 800+, sem CAIXA-ALTA em rótulos/botões.
+- Ícones lucide com `strokeWidth={1.75}`; sem emoji. Marca só via `<PrismaMark />` / `<PrismaWordmark />`.
+- Toda tela nova é verificada nos temas claro e escuro e em largura de celular.
 
 ## Convenções
 - Interface em pt-BR; usar o termo **"Líderes"**. Colunas/identificadores em inglês (`title`, `due_date`, `assignee_id`).

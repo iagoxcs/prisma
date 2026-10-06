@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { getSupabase } from "@/lib/supabase/client";
+import { dateTime } from "@/lib/format";
+import { MSG_ERROR, ROW_LIST, SELECT_CLASS } from "@/lib/ui";
 import { useQuery } from "@/lib/use-query";
 
 interface LogRow {
@@ -44,29 +46,29 @@ export function AuditTab() {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-3">
-        <select aria-label="Filtrar por tipo" className="h-8 rounded-lg border bg-background px-2 text-sm" value={entity} onChange={(e) => setEntity(e.target.value)}>
+        <select aria-label="Filtrar por tipo" className={SELECT_CLASS} value={entity} onChange={(e) => setEntity(e.target.value)}>
           <option value="">Todos os tipos</option>
           {Object.entries(ENTITY_LABEL).map(([k, v]) => (
             <option key={k} value={k}>{v}</option>
           ))}
         </select>
-        <span className="text-xs text-muted-foreground">Últimos 100 registros. Gerado automaticamente; não pode ser editado.</span>
+        <span className="text-[0.8125rem] text-muted-foreground">Últimos 100 registros. Gerado automaticamente; não pode ser editado.</span>
       </div>
-      {logs.error && <p role="alert" className="text-sm text-destructive">{logs.error}</p>}
-      <ul className="divide-y rounded-lg border">
+      {logs.error && <p role="alert" className={MSG_ERROR}>{logs.error}</p>}
+      <ul className={ROW_LIST}>
         {(logs.data ?? []).map((r) => (
-          <li key={r.id} className="px-4 py-2 text-sm">
+          <li key={r.id} className="surface-card space-y-0.5 px-4 py-3 text-sm">
             <div>
               <span className="font-medium">{(r.user_id && names.get(r.user_id)) || "Sistema"}</span>{" "}
               {ACTION_LABEL[r.action] ?? r.action} {(ENTITY_LABEL[r.entity] ?? r.entity).toLowerCase()}
             </div>
-            <div className="text-xs text-muted-foreground">{describe(r)}</div>
-            <time dateTime={r.created_at} className="text-xs text-muted-foreground">
-              {new Date(r.created_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}
+            <div className="text-[0.8125rem] text-muted-foreground">{describe(r)}</div>
+            <time dateTime={r.created_at} className="num block text-xs text-muted-foreground">
+              {dateTime(r.created_at)}
             </time>
           </li>
         ))}
-        {logs.data?.length === 0 && <li className="px-4 py-6 text-sm text-muted-foreground">Sem registros.</li>}
+        {logs.data?.length === 0 && <li className="text-sm text-muted-foreground">Sem registros.</li>}
       </ul>
     </div>
   );

@@ -9,10 +9,13 @@ import { CategoriesPanel } from "@/components/project/categories-panel";
 import { Kanban } from "@/components/project/kanban";
 import { MembersPanel } from "@/components/project/members-panel";
 import { TaskPanel } from "@/components/project/task-panel";
-import { Badge } from "@/components/ui/badge";
+import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { shortDate } from "@/lib/format";
 import { getSupabase } from "@/lib/supabase/client";
+import { categoryColor, OVERDUE_BADGE, PROJECT_STATUS_COLOR, TASK_STATUS_COLOR } from "@/lib/theme/status";
+import { MSG_ERROR, SEGMENTED, SEGMENT_ITEM, SELECT_CLASS } from "@/lib/ui";
 import { useQuery } from "@/lib/use-query";
 import { cn } from "@/lib/utils";
 import { PROJECT_STATUS_LABEL, todayISO, type Category, type Person, type Project, type ProjectStatus, type Task } from "@/types/domain";
@@ -92,7 +95,7 @@ function ProjetoDetalhe() {
         sub: t.assignee_id ? names.get(t.assignee_id) : undefined,
         start: t.start_date,
         end: t.due_date,
-        color: (t.category_id && cats.get(t.category_id)?.color) || "#64748b",
+        color: t.category_id && cats.get(t.category_id) ? categoryColor(cats.get(t.category_id)!.color) : TASK_STATUS_COLOR[t.status],
         done: t.status === "done",
         overdue: t.status !== "done" && !!t.due_date && t.due_date < today,
       }))
@@ -106,26 +109,29 @@ function ProjetoDetalhe() {
 
   const isManager = profile.role === "admin" || p.manager_id === profile.id;
   const canManageScopes = isManager || profile.role === "lider";
+  const overdue = !!p.end_date && p.end_date < todayISO() && p.status !== "concluido" && p.status !== "cancelado";
 
   return (
-    <div className="space-y-4">
-      <Link href="/projetos/" className="text-sm text-muted-foreground hover:underline">← Projetos</Link>
-      <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-2xl font-semibold">{p.name}</h1>
-        <Badge variant="secondary">{PROJECT_STATUS_LABEL[p.status]}</Badge>
-        {p.clients?.name && <span className="text-sm text-muted-foreground">{p.clients.name}</span>}
+    <div className="space-y-5">
+      <Link href="/projetos/" className="-ml-1 inline-flex min-h-11 items-center gap-1.5 rounded-md px-1 text-sm font-medium text-muted-foreground hover:text-foreground">
+        <ArrowLeft className="size-4" strokeWidth={1.75} aria-hidden /> Projetos
+      </Link>
+      <div className="space-y-2">
+        <h1>{p.name}</h1>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+          <span className="flex items-center gap-2">
+            <span className="size-2 rounded-full" style={{ background: PROJECT_STATUS_COLOR[p.status] }} />
+            {PROJECT_STATUS_LABEL[p.status]}
+          </span>
+          {p.clients?.name && <span className="text-muted-foreground">{p.clients.name}</span>}
+          {overdue && <span className={cn("num rounded-md px-2.5 py-0.5 text-xs", OVERDUE_BADGE)}>vencido {shortDate(p.end_date!)}</span>}
+        </div>
       </div>
       {isManager && <ProjectEditor key={p.id + p.status + p.start_date + p.end_date} project={p} onSaved={project.reload} />}
 
-      <div role="tablist" className="flex gap-1 border-b">
+      <div role="tablist" aria-label="Visões do projeto" className={SEGMENTED}>
         {TABS.filter((t) => !(profile.is_external && t.id === "escopos")).map((t) => (
-          <button
-            key={t.id}
-            role="tab"
-            aria-selected={tab === t.id}
-            onClick={() => setTab(t.id)}
-            className={cn("-mb-px border-b-2 px-3 py-2 text-sm", tab === t.id ? "border-primary font-medium" : "border-transparent text-muted-foreground hover:text-foreground")}
-          >
+          <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)} className={SEGMENT_ITEM}>
             {t.label}
           </button>
         ))}
@@ -183,25 +189,25 @@ function ProjectEditor({ project, onSaved }: { project: Project; onSaved: () => 
   }
 
   return (
-    <form onSubmit={save} className="flex flex-wrap items-end gap-2 text-sm">
-      <label className="space-y-1">
-        <span className="block text-xs text-muted-foreground">Status</span>
-        <select className="h-8 rounded-lg border bg-background px-2" value={status} onChange={(e) => setStatus(e.target.value as ProjectStatus)}>
+    <form onSubmit={save} className="glass-coluna flex flex-wrap items-end gap-3 p-4 text-sm">
+      <label className="space-y-1.5">
+        <span className="block text-[0.8125rem] font-medium text-muted-foreground">Status</span>
+        <select className={SELECT_CLASS} value={status} onChange={(e) => setStatus(e.target.value as ProjectStatus)}>
           {(Object.keys(PROJECT_STATUS_LABEL) as ProjectStatus[]).map((s) => (
             <option key={s} value={s}>{PROJECT_STATUS_LABEL[s]}</option>
           ))}
         </select>
       </label>
-      <label className="space-y-1">
-        <span className="block text-xs text-muted-foreground">Início</span>
-        <Input type="date" value={start} onChange={(e) => setStart(e.target.value)} />
+      <label className="space-y-1.5">
+        <span className="block text-[0.8125rem] font-medium text-muted-foreground">Início</span>
+        <Input type="date" className="num" value={start} onChange={(e) => setStart(e.target.value)} />
       </label>
-      <label className="space-y-1">
-        <span className="block text-xs text-muted-foreground">Fim</span>
-        <Input type="date" value={end} onChange={(e) => setEnd(e.target.value)} />
+      <label className="space-y-1.5">
+        <span className="block text-[0.8125rem] font-medium text-muted-foreground">Fim</span>
+        <Input type="date" className="num" value={end} onChange={(e) => setEnd(e.target.value)} />
       </label>
       <Button type="submit" variant="outline">Salvar projeto</Button>
-      {error && <p role="alert" className="w-full text-sm text-destructive">{error}</p>}
+      {error && <p role="alert" className={cn("w-full", MSG_ERROR)}>{error}</p>}
     </form>
   );
 }

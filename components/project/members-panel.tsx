@@ -3,7 +3,9 @@
 import { useState, type FormEvent } from "react";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { initials } from "@/lib/format";
 import { getSupabase } from "@/lib/supabase/client";
+import { MSG_ERROR, ROW, ROW_LIST, SELECT_CLASS } from "@/lib/ui";
 import { useQuery } from "@/lib/use-query";
 import { ROLE_LABEL, type Person, type UserRole } from "@/types/domain";
 
@@ -65,29 +67,40 @@ export function MembersPanel({
   }
 
   return (
-    <div className="max-w-xl space-y-4">
-      <ul className="divide-y rounded-lg border">
+    <div className="max-w-xl space-y-5">
+      <ul className={ROW_LIST}>
         {(members.data ?? []).map((m) => (
-          <li key={m.user_id} className="flex items-center justify-between px-4 py-2 text-sm">
-            <span>
-              {m.profiles?.name ?? "—"}
-              {m.user_id === managerId && <span className="ml-2 text-xs text-muted-foreground">gerente do projeto</span>}
+          <li key={m.user_id} className={ROW}>
+            <span className="flex min-w-0 items-center gap-3">
+              <span className="num flex size-8 shrink-0 items-center justify-center rounded-full bg-brand-shallow text-xs text-foreground" aria-hidden>
+                {initials(m.profiles?.name ?? "?")}
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate font-medium">{m.profiles?.name ?? "—"}</span>
+                {m.user_id === managerId && <span className="block text-[0.8125rem] text-brand-mid">Gerente do projeto</span>}
+              </span>
             </span>
-            <span className="flex items-center gap-3 text-xs text-muted-foreground">
+            <span className="flex items-center gap-2 text-[0.8125rem] text-muted-foreground">
               {m.profiles ? ROLE_LABEL[m.profiles.role] : ""}
               {canManage && m.user_id !== managerId && (
-                <button type="button" aria-label="Remover membro" className="hover:text-destructive" onClick={() => remove(m.user_id)}>
-                  <X className="size-3.5" />
-                </button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={`Remover ${m.profiles?.name ?? "membro"}`}
+                  className="-mr-2 hover:text-destructive"
+                  onClick={() => remove(m.user_id)}
+                >
+                  <X strokeWidth={1.75} />
+                </Button>
               )}
             </span>
           </li>
         ))}
-        {members.data?.length === 0 && <li className="px-4 py-4 text-sm text-muted-foreground">Nenhum membro.</li>}
+        {members.data?.length === 0 && <li className="text-sm text-muted-foreground">Nenhum membro. Adicione pessoas abaixo.</li>}
       </ul>
       {canManage && (
         <form onSubmit={add} className="flex gap-2">
-          <select aria-label="Pessoa" required className="h-8 flex-1 rounded-lg border bg-background px-2 text-sm" value={userId} onChange={(e) => setUserId(e.target.value)}>
+          <select aria-label="Pessoa" required className={`${SELECT_CLASS} min-w-0 flex-1`} value={userId} onChange={(e) => setUserId(e.target.value)}>
             <option value="">Adicionar pessoa…</option>
             {options.map((o) => (
               <option key={o.id} value={o.id}>{o.name} ({ROLE_LABEL[o.role]})</option>
@@ -96,7 +109,7 @@ export function MembersPanel({
           <Button type="submit">Adicionar</Button>
         </form>
       )}
-      {(error || members.error) && <p role="alert" className="text-sm text-destructive">{error ?? members.error}</p>}
+      {(error || members.error) && <p role="alert" className={MSG_ERROR}>{error ?? members.error}</p>}
     </div>
   );
 }

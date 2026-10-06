@@ -6,11 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getSupabase } from "@/lib/supabase/client";
+import { dateTime } from "@/lib/format";
+import { MSG_ERROR, MSG_OK, ROW_LIST, SELECT_CLASS } from "@/lib/ui";
 import { useQuery } from "@/lib/use-query";
 import { ROLE_LABEL, type Profile, type UserRole } from "@/types/domain";
 
 const ROLES = Object.keys(ROLE_LABEL) as UserRole[];
-const SELECT_CLASS = "h-8 rounded-lg border bg-background px-2 text-sm";
 
 interface AuthInfo {
   id: string;
@@ -101,25 +102,29 @@ export function UsersTab() {
 
       {showCreate && <CreateForm onCreated={(email) => { setMsg({ ok: true, text: `Usuário ${email} criado.` }); reloadAll(); }} onError={(t) => setMsg({ ok: false, text: t })} />}
 
-      {msg && <p role={msg.ok ? "status" : "alert"} className={msg.ok ? "text-sm text-emerald-600" : "text-sm text-destructive"}>{msg.text}</p>}
-      {users.error && <p role="alert" className="text-sm text-destructive">{users.error}</p>}
-      {auth.error && <p role="alert" className="text-sm text-destructive">E-mails indisponíveis: {auth.error}</p>}
+      {msg && <p role={msg.ok ? "status" : "alert"} className={msg.ok ? MSG_OK : MSG_ERROR}>{msg.text}</p>}
+      {users.error && <p role="alert" className={MSG_ERROR}>{users.error}</p>}
+      {auth.error && <p role="alert" className={MSG_ERROR}>E-mails indisponíveis: {auth.error}</p>}
 
-      <ul className="divide-y rounded-lg border">
+      <ul className={ROW_LIST}>
         {list.map((u) => {
           const self = u.id === profile?.id;
           const a = info.get(u.id);
           return (
-            <li key={u.id} className="space-y-2 px-4 py-3 text-sm">
+            <li key={u.id} className="surface-card space-y-3 px-4 py-3 text-sm">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <span>
-                  <span className="font-medium">{u.name}</span>
-                  {self && <span className="ml-2 text-xs text-muted-foreground">(você)</span>}
-                  {!u.active && <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-xs">inativo</span>}
-                  <span className="block text-xs text-muted-foreground">
-                    {a?.email ?? "—"}
-                    {u.job_title && ` · ${u.job_title}`}
-                    {` · último acesso: ${a?.last_sign_in_at ? new Date(a.last_sign_in_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }) : "nunca"}`}
+                <span className="min-w-0">
+                  <span className="flex flex-wrap items-center gap-2">
+                    <span className={u.active ? "text-[0.9375rem] font-medium" : "text-[0.9375rem] font-medium text-muted-foreground"}>{u.name}</span>
+                    {self && <span className="text-[0.8125rem] text-muted-foreground">(você)</span>}
+                    {!u.active && <span className="rounded-md bg-secondary px-2 text-xs font-medium text-secondary-foreground">Inativo</span>}
+                  </span>
+                  <span className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[0.8125rem] text-muted-foreground">
+                    <span>{a?.email ?? "—"}</span>
+                    {u.job_title && <span>{u.job_title}</span>}
+                    <span>
+                      Último acesso: {a?.last_sign_in_at ? <span className="num">{dateTime(a.last_sign_in_at)}</span> : "nunca"}
+                    </span>
                   </span>
                 </span>
                 <span className="flex flex-wrap items-center gap-2">
@@ -151,9 +156,9 @@ export function UsersTab() {
             </li>
           );
         })}
-        {list.length === 0 && !users.loading && <li className="px-4 py-6 text-sm text-muted-foreground">Nenhum usuário encontrado.</li>}
+        {list.length === 0 && !users.loading && <li className="text-sm text-muted-foreground">Nenhum usuário encontrado.</li>}
       </ul>
-      <p className="text-xs text-muted-foreground">
+      <p className="text-[0.8125rem] text-muted-foreground">
         Usuários não são excluídos: desative para bloquear o acesso e preservar o histórico. O sistema sempre mantém ao menos um administrador ativo.
       </p>
     </div>
@@ -179,7 +184,7 @@ function CreateForm({ onCreated, onError }: { onCreated: (email: string) => void
   }
 
   return (
-    <form onSubmit={create} className="grid max-w-2xl gap-3 rounded-lg border p-4 sm:grid-cols-2">
+    <form onSubmit={create} className="glass-coluna grid max-w-2xl gap-4 p-5 sm:grid-cols-2">
       <div className="space-y-1">
         <Label htmlFor="u-name">Nome</Label>
         <Input id="u-name" required value={form.name} onChange={(e) => set("name", e.target.value)} />
@@ -224,14 +229,14 @@ function EditForm({ user, onDone }: { user: Profile; onDone: (error?: string) =>
   return (
     <form onSubmit={save} className="flex flex-wrap items-end gap-2">
       <label className="space-y-1">
-        <span className="block text-xs text-muted-foreground">Nome</span>
+        <span className="block text-[0.8125rem] font-medium text-muted-foreground">Nome</span>
         <Input required value={name} onChange={(e) => setName(e.target.value)} />
       </label>
       <label className="space-y-1">
-        <span className="block text-xs text-muted-foreground">Cargo</span>
+        <span className="block text-[0.8125rem] font-medium text-muted-foreground">Cargo</span>
         <Input value={job} onChange={(e) => setJob(e.target.value)} />
       </label>
-      <Button type="submit" size="sm">Salvar</Button>
+      <Button type="submit">Salvar</Button>
     </form>
   );
 }

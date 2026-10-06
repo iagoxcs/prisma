@@ -1,3 +1,4 @@
+import { Check, Minus } from "lucide-react";
 import { ROLE_LABEL, type UserRole } from "@/types/domain";
 
 // Matriz somente leitura: espelha as policies de RLS (docs/ARQUITETURA.md). Alterar permissões = migração.
@@ -25,26 +26,30 @@ export function PermissionsTab() {
       <p className="text-sm text-muted-foreground">
         Referência das regras aplicadas pelo banco de dados (RLS). Para alterar uma permissão é necessária uma migração — não há edição por tela, de propósito.
       </p>
-      <div className="overflow-x-auto rounded-lg border">
+      <div className="glass-coluna overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b bg-muted/50 text-left">
-              <th className="px-3 py-2 font-medium">Capacidade</th>
+            <tr className="border-b text-left text-sm text-muted-foreground">
+              <th className="px-4 py-3 font-medium">Capacidade</th>
               {ORDER.map((r) => (
-                <th key={r} className="px-3 py-2 text-center font-medium">{ROLE_LABEL[r]}</th>
+                <th key={r} className="px-3 py-3 text-center font-medium">{ROLE_LABEL[r]}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {ROWS.map((row) => (
               <tr key={row.label} className="border-b last:border-0">
-                <td className="px-3 py-2">
+                <td className="px-4 py-3">
                   {row.label}
-                  {row.note && <span className="block text-xs text-muted-foreground">{row.note}</span>}
+                  {row.note && <span className="block text-[0.8125rem] text-muted-foreground">{row.note}</span>}
                 </td>
                 {ORDER.map((r) => (
-                  <td key={r} className="px-3 py-2 text-center">
-                    {row.allowed.includes(r) ? <span aria-label="Permitido">✓</span> : <span aria-label="Não permitido" className="text-muted-foreground">—</span>}
+                  <td key={r} className="px-3 py-3 text-center">
+                    {row.allowed.includes(r) ? (
+                      <Check aria-label="Permitido" className="mx-auto size-4 text-brand-mid" strokeWidth={1.75} />
+                    ) : (
+                      <Minus aria-label="Não permitido" className="mx-auto size-4 text-muted-foreground" strokeWidth={1.75} />
+                    )}
                   </td>
                 ))}
               </tr>

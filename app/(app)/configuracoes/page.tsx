@@ -7,7 +7,7 @@ import { AuditTab } from "@/components/settings/audit-tab";
 import { GeneralTab } from "@/components/settings/general-tab";
 import { PermissionsTab } from "@/components/settings/permissions-tab";
 import { UsersTab } from "@/components/settings/users-tab";
-import { cn } from "@/lib/utils";
+import { SEGMENTED, SEGMENT_ITEM } from "@/lib/ui";
 
 const TABS = [
   { id: "geral", label: "Parâmetros" },
@@ -26,16 +26,16 @@ function Configuracoes() {
   if (profile?.role !== "admin") return <p className="text-sm">Acesso restrito a administradores.</p>;
 
   return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-semibold">Configurações</h1>
-      <div role="tablist" className="flex flex-wrap gap-1 border-b">
+    <div className="space-y-6">
+      <h1>Configurações</h1>
+      <div role="tablist" aria-label="Seções de configuração" className={SEGMENTED}>
         {TABS.map((t) => (
           <button
             key={t.id}
             role="tab"
             aria-selected={tab === t.id}
             onClick={() => setTab(t.id)}
-            className={cn("-mb-px border-b-2 px-3 py-2 text-sm", tab === t.id ? "border-primary font-medium" : "border-transparent text-muted-foreground hover:text-foreground")}
+            className={SEGMENT_ITEM}
           >
             {t.label}
           </button>
