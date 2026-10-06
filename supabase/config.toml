@@ -1,0 +1,29 @@
+project_id = "prisma"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+max_rows = 1000
+
+[db]
+port = 54322
+major_version = 17
+
+[db.seed]
+enabled = true
+sql_paths = ["./seed.sql"]
+
+[auth]
+enabled = true
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["http://localhost:3000/**"]
+enable_signup = false          # usuários entram por convite (internos e externos)
+minimum_password_length = 10
+
+[storage]
+enabled = true
+file_size_limit = "20MiB"
+
+[realtime]
+enabled = true
