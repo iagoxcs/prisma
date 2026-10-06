@@ -12,6 +12,37 @@ Um deploy por vez, na ordem dos merges. Também dá para rodar manualmente em Gi
 
 ---
 
+## Situação atual (06/10/2026)
+
+**Endereço pretendido:** `https://prisma.ambienteconsultoria.com.br` (subdomínio; não exige mudança no código, pois o site usa caminhos a partir da raiz).
+
+| Item | Estado |
+|---|---|
+| Secrets do environment `production` | 9 de 9 cadastrados |
+| Job Supabase do deploy | ✅ passa (migrações em dia; Edge Function `admin-users` publicada) |
+| Job Site (FTPS) | ❌ falha: login funciona, mas a conta FTP não tem pasta do site |
+| DNS de `ambienteconsultoria.com.br` | Sem registros `A`/`www`; nameservers do Registro.br (`a.auto.dns.br`, `b.auto.dns.br`) |
+| Subdomínio `prisma` | Não existe no DNS |
+| SSL / Supabase Auth (Site URL) | Pendentes (dependem do DNS) |
+
+**Diagnóstico do FTP** (log detalhado do deploy): servidor `web1009.kinghost.net` (IP `191.6.222.10`); ao entrar, a raiz da conta está **vazia**, `www` não existe e `MKD` retorna `550 Permission denied`. A hospedagem não tem um site configurado para este domínio, ou o usuário FTP não é o da hospedagem do site.
+
+**Bloqueio:** o DNS do domínio é editado no Registro.br, e o acesso está com a titular do domínio (contatos administrativo e técnico no Registro.br). Sem esse acesso, nenhum serviço responde no domínio ou em subdomínios dele.
+
+**Próximos passos**
+1. **KingHost:** cadastrar `prisma.ambienteconsultoria.com.br` como site na hospedagem; anotar IP do servidor, usuário FTP e pasta pública.
+2. **Registro.br** (titular, ou você após ser incluído como contato técnico): na zona DNS, criar `A` `prisma` → IP da KingHost (provavelmente `191.6.222.10`; confirmar no painel).
+3. **KingHost:** após a propagação, ativar o SSL do subdomínio.
+4. **Supabase Auth:** Site URL `https://prisma.ambienteconsultoria.com.br` e Redirect URL `https://prisma.ambienteconsultoria.com.br/**`.
+5. **GitHub:** atualizar `KINGHOST_FTP_USER`, `KINGHOST_FTP_PASSWORD` e `KINGHOST_FTP_DIR` e rodar *Deploy produção* manualmente.
+6. Com o deploy verde, remover a variável `FTP_LOG_LEVEL` do environment `production` (hoje `verbose`, para diagnóstico; o repositório é público e o log fica visível).
+
+**Alternativa provisória** (sem domínio próprio): publicar em Cloudflare Pages ou Netlify (`*.pages.dev` / `*.netlify.app`), com HTTPS automático, até o DNS ser liberado.
+
+**Observação:** o `MX` do domínio é `.` (null MX): o domínio não recebe e-mail. Se houver endereços `@ambienteconsultoria.com.br` em uso, as mensagens não chegam.
+
+---
+
 ## 1. Domínio próprio (uma vez)
 
 ### 1.1 Hospedagem na KingHost
@@ -32,6 +63,12 @@ Os valores vêm do painel da KingHost (não são gerados pelo projeto). Duas op�
   Na Cloudflare, deixe o registro como *DNS only* (nuvem cinza) até o SSL estar emitido.
 
 A propagação leva de minutos a algumas horas. Para conferir: `nslookup <seu-dominio>`.
+
+### 1.2.1 Subdomínio (ex.: `prisma.ambienteconsultoria.com.br`)
+- Cadastre o subdomínio como site na KingHost; ela cria a pasta pública dele na conta FTP da hospedagem. Use essa pasta em `KINGHOST_FTP_DIR` e o usuário FTP dessa hospedagem.
+- Se o DNS **não** estiver na KingHost (caso atual: Registro.br), crie o registro manualmente no provedor de DNS: `A` com nome `prisma` (só o prefixo) apontando para o IP do servidor.
+- O SSL do domínio principal não cobre subdomínios (exceto certificado *wildcard*): ative o SSL também para o subdomínio.
+- Publicar em subcaminho (`dominio/prisma`) exigiria `basePath` no `next.config.ts`; subdomínio não.
 
 ### 1.3 HTTPS
 Depois que o DNS propagar, ative o certificado SSL gratuito (Let's Encrypt) no painel da KingHost para o domínio.
