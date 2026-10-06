@@ -1,0 +1,69 @@
+name: Deploy produção
+
+# Todo merge em main publica: 1) migrações e Edge Functions no Supabase; 2) site estático no Netlify.
+# O site só sobe se o Supabase atualizar sem erro (o front novo pode depender do schema novo).
+# Secrets ficam no environment "production" (GitHub → Settings → Environments). Ver docs/DEPLOY.md.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Um deploy por vez, na ordem dos merges; nunca cancela um deploy em andamento.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  supabase:
+    name: Supabase (migrações e Edge Functions)
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Vincular projeto
+        run: supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
+      - name: Migrações pendentes (prévia)
+        run: supabase db push --dry-run --password "$SUPABASE_DB_PASSWORD"
+      # Falha se o histórico remoto tiver versões que não existem em supabase/migrations/ (ver CLAUDE.md).
+      - name: Aplicar migrações
+        run: supabase db push --password "$SUPABASE_DB_PASSWORD"
+      - name: Publicar Edge Functions
+        run: supabase functions deploy --project-ref "$SUPABASE_PROJECT_REF" --use-api
+
+  site:
+    name: Site (Netlify)
+    needs: supabase
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      # Envia o ./out já compilado acima; --no-build impede o Netlify de compilar de novo
+      # (o build de lá não teria as variáveis NEXT_PUBLIC_*).
+      - name: Publicar ./out no Netlify
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+        run: |
+          if [ -z "$NETLIFY_AUTH_TOKEN" ] || [ -z "$NETLIFY_SITE_ID" ]; then
+            echo "::error::Secrets NETLIFY_AUTH_TOKEN e NETLIFY_SITE_ID são obrigatórios"; exit 1
+          fi
+          npx --yes netlify-cli@27 deploy --prod --no-build --dir=out \
+            --site="$NETLIFY_SITE_ID" --message "${GITHUB_SHA::7}"

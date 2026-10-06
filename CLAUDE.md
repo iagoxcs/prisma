@@ -3,11 +3,11 @@
 # Prisma — Gerenciador de Projetos (Ambiente Consultoria)
 
 Ferramenta interna, **single-tenant** (sem `tenant_id`). Especificação completa: `docs/REQUISITOS.md`.
-Decisões e arquitetura: `docs/ARQUITETURA.md`. Fases: `docs/ROADMAP.md`. Deploy: `docs/DEPLOY-KINGHOST.md`.
+Decisões e arquitetura: `docs/ARQUITETURA.md`. Fases: `docs/ROADMAP.md`. Deploy: `docs/DEPLOY.md`.
 Identidade visual: `docs/IDENTIDADE-VISUAL.md`.
 
 ## Stack
-Next.js (App Router) + TypeScript + Tailwind + shadcn/ui · Supabase (Auth, Postgres+RLS, Storage, Realtime, Edge Functions, pg_cron) · publicação **estática** na KingHost.
+Next.js (App Router) + TypeScript + Tailwind + shadcn/ui · Supabase (Auth, Postgres+RLS, Storage, Realtime, Edge Functions, pg_cron) · publicação **estática** no Netlify.
 
 ## Regras (inegociáveis)
 - **Toda tabela nova nasce com `enable row level security` e policies na mesma migração.**
