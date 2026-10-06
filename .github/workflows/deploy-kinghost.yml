@@ -74,8 +74,8 @@ jobs:
           FTP_PASS: ${{ secrets.KINGHOST_FTP_PASSWORD }}
           DIR: ${{ steps.ftpdir.outputs.dir }}
         run: |
-          echo "== raiz da conta"; curl -sS --ssl-reqd --list-only --user "$FTP_USER:$FTP_PASS" "ftp://$FTP_HOST/" || true
-          echo "== pasta de destino"; curl -sS --ssl-reqd --list-only --user "$FTP_USER:$FTP_PASS" "ftp://$FTP_HOST/$DIR" || true
+          echo "== raiz da conta"; curl -sSk --ssl-reqd --list-only --user "$FTP_USER:$FTP_PASS" "ftp://$FTP_HOST/" || true
+          echo "== pasta de destino"; curl -sSk --ssl-reqd --list-only --user "$FTP_USER:$FTP_PASS" "ftp://$FTP_HOST/$DIR" || true
       - name: Enviar ./out por FTPS
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
