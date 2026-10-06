@@ -1,4 +1,4 @@
-# Roadmap e progresso
+﻿# Roadmap e progresso
 
 Legenda: ✅ feito · 🟡 parcial · ⬜ pendente
 
@@ -33,6 +33,7 @@ Legenda: ✅ feito · 🟡 parcial · ⬜ pendente
 - ✅ Gatilhos: atribuição, novo comentário, prazo próximo (hoje/amanhã) e prazo vencido via `pg_cron` diário às 08:00 de Brasília
 - ⬜ Menções (@) em comentários
 - ⬜ Arrastar barras do Gantt para alterar datas
+
 ## Fase 4 — IA (RF-03–05, 13–16)
 `ai-gateway`, ferramentas restritas, auditoria, relatórios HTML. Depende das validações 1–5 e 10.
 
