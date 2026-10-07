@@ -6,7 +6,7 @@ Banco, autenticação, arquivos e Edge Functions ficam no Supabase.
 **Fluxo automático:** cada merge em `main` dispara o workflow *Deploy produção* (`.github/workflows/deploy.yml`):
 
 1. **Supabase:** aplica as migrações pendentes de `supabase/migrations/` (`supabase db push`) e publica as Edge Functions.
-2. **Site:** só se o passo 1 passar, roda lint, typecheck e build e envia `out/` para o Netlify (`netlify deploy --prod --no-build`).
+2. **Site:** só se o passo 1 passar, roda lint, typecheck, a trava das variáveis públicas (item 2), build e envia `out/` para o Netlify (`netlify deploy --prod --no-build`).
 
 Um deploy por vez, na ordem dos merges. Também dá para rodar manualmente em GitHub → Actions → *Deploy produção* → *Run workflow*.
 
@@ -62,6 +62,11 @@ gh secret set NETLIFY_AUTH_TOKEN --env production
 ```
 
 Nunca use a chave `service_role` em nenhum desses secrets nem no front.
+
+**Trava automática:** antes e depois do build, o deploy roda `scripts/check-public-env.sh` e é cancelado se `NEXT_PUBLIC_SUPABASE_URL` não for `https://<ref>.supabase.co`, se `NEXT_PUBLIC_SUPABASE_ANON_KEY` for uma chave secreta (`sb_secret_…` ou JWT com papel diferente de `anon`), ou se `out/` contiver uma chave secreta. Motivo: em 06/10/2026 uma chave secreta foi cadastrada no lugar da publishable e chegou ao site (chave exposta assim deve ser revogada no Supabase, pois deploys antigos do Netlify continuam com ela). Para conferir localmente:
+```bash
+bash scripts/check-public-env.sh out
+```
 
 Os secrets `KINGHOST_FTP_*` e a variável `FTP_LOG_LEVEL` não são mais usados e podem ser removidos.
 

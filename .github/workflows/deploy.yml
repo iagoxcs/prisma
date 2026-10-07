@@ -51,7 +51,18 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
+      # Trava: NEXT_PUBLIC_* vai para o JS público. Recusa URL que não seja do Supabase e chave secreta.
+      - name: Conferir variáveis públicas
+        run: bash scripts/check-public-env.sh
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
       - run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      - name: Conferir o build (sem chave secreta em ./out)
+        run: bash scripts/check-public-env.sh out
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
