@@ -28,6 +28,14 @@ export const TASK_STATUS_LABEL: Record<TaskStatus, string> = {
   done: "Feito",
 };
 
+export type ProjectHealth = "on_track" | "at_risk" | "off_track";
+
+export const HEALTH_LABEL: Record<ProjectHealth, string> = {
+  on_track: "No prazo",
+  at_risk: "Em risco",
+  off_track: "Fora do prazo",
+};
+
 export interface Profile {
   id: string;
   name: string;
