@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState, type FormEvent } from "react";
-import { CalendarDays } from "lucide-react";
+import { CalendarDays, Upload } from "lucide-react";
+import { TaskImport } from "@/components/project/task-import";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { initials, shortDate } from "@/lib/format";
@@ -19,6 +20,7 @@ export function Kanban({
   categories,
   people,
   canCreate,
+  canManageScopes,
   onOpen,
   onChanged,
 }: {
@@ -27,10 +29,12 @@ export function Kanban({
   categories: Category[];
   people: Person[];
   canCreate: boolean;
+  canManageScopes: boolean;
   onOpen: (id: string) => void;
   onChanged: () => void;
 }) {
   const [title, setTitle] = useState("");
+  const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
   const [filterAssignee, setFilterAssignee] = useState("");
@@ -74,6 +78,11 @@ export function Kanban({
             <Button type="submit">Adicionar</Button>
           </form>
         )}
+        {canCreate && (
+          <Button type="button" variant="outline" onClick={() => setImporting(true)}>
+            <Upload strokeWidth={1.75} aria-hidden /> Importar CSV
+          </Button>
+        )}
         <select aria-label="Filtrar por responsável" className={SELECT_CLASS} value={filterAssignee} onChange={(e) => setFilterAssignee(e.target.value)}>
           <option value="">Todos os responsáveis</option>
           {people.map((p) => (
@@ -88,6 +97,17 @@ export function Kanban({
         </select>
       </div>
       {error && <p role="alert" className={MSG_ERROR}>{error}</p>}
+      {importing && (
+        <TaskImport
+          projectId={projectId}
+          tasks={tasks}
+          categories={categories}
+          people={people}
+          canManageScopes={canManageScopes}
+          onClose={() => setImporting(false)}
+          onImported={onChanged}
+        />
+      )}
 
       <div className="grid gap-4 lg:grid-cols-3">
         {COLUMNS.map((status) => {
