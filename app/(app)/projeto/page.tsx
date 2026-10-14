@@ -144,6 +144,7 @@ function ProjetoDetalhe() {
           categories={categories.data ?? []}
           people={people.data ?? []}
           canCreate={!profile.is_external}
+          canManageScopes={canManageScopes}
           onOpen={setOpenId}
           onChanged={tasks.reload}
         />
