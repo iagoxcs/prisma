@@ -30,7 +30,7 @@ Entregue o plano com a lista de arquivos e o diff previsto por arquivo antes de 
 |---|---|---|
 | 1 | Padrão visual dos relatórios HTML | Validação #10 de REQUISITOS.md |
 | 2 | Restringir `categories.color` também no banco (check constraint) | Decisão: migração nova |
-| 3 | Ícones PWA a partir de `PrismaMark` | Favicon já em `app/icon.svg` (cores do tema claro); faltam os PNG do manifesto |
+| 3 | Ícones PWA a partir de `PrismaMark` | Favicon já em `app/icon.svg` (refração em cascata, segue o tema do sistema); faltam os PNG do manifesto, a gerar a partir de `public/brand/icon.svg` |
 
 ## Situação
 
