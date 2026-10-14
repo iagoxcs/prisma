@@ -144,9 +144,18 @@
   --strata-4: #b9d3ea;
   --strata-opacity: 1;
 
-  --mark-1: #a9c9e5;
-  --mark-2: #4f8bc0;
-  --mark-3: #163a5c;
+  --mark-prism-from: #24507a;
+  --mark-prism-to: #163a5c;
+  --mark-beam-1-from: #5a95c9;
+  --mark-beam-1-to: #3b76ac;
+  --mark-beam-2-from: #3374ad;
+  --mark-beam-2-to: #215c93;
+  --mark-beam-3-from: #1d4770;
+  --mark-beam-3-to: #11304d;
+  --mark-word-from: #1e4a72;
+  --mark-word-to: #163a5c;
+  --mark-accent-from: #3a7bb4;
+  --mark-accent-to: #2a6aa3;
 
   --sidebar: var(--glass-painel);
   --sidebar-foreground: #163a5c;
@@ -215,9 +224,18 @@
   --strata-4: #15406b;
   --strata-opacity: 0.9;
 
-  --mark-1: #e6f0f8;
-  --mark-2: #8ec0ee;
-  --mark-3: #3e86c9;
+  --mark-prism-from: #ffffff;
+  --mark-prism-to: #d3e4f3;
+  --mark-beam-1-from: #3a80c2;
+  --mark-beam-1-to: #5a9ddb;
+  --mark-beam-2-from: #86bbeb;
+  --mark-beam-2-to: #aad2f5;
+  --mark-beam-3-from: #d9e8f5;
+  --mark-beam-3-to: #ffffff;
+  --mark-word-from: #f4f9fd;
+  --mark-word-to: #d9e8f5;
+  --mark-accent-from: #a8cff3;
+  --mark-accent-to: #8ec0ee;
 
   --sidebar: var(--glass-painel);
   --sidebar-foreground: #e6f0f8;

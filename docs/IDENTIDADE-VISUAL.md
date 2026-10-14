@@ -141,11 +141,13 @@ Regras:
 ## 6. Marca
 
 - Componente: `<PrismaMark />` (símbolo) e `<PrismaWordmark />` (símbolo + nome).
-- O símbolo são **três estratos** formando um triângulo. As cores vêm de `--mark-1..3` e trocam com o tema.
-- Tamanho mínimo: 20px de largura. Área de proteção: metade da altura do símbolo em todos os lados.
-- Proibido: recolorir manualmente, rotacionar, aplicar sombra ou brilho, usar gradiente, separar os estratos, usar sobre fotografia.
-- O nome é sempre "Prisma", em caixa de sentença, Red Hat Display 700.
-- Favicon: exportar o símbolo em SVG com as cores do tema claro.
+- O símbolo é a **refração em cascata**: um prisma triangular e três feixes paralelos à sua face direita, com início escalonado e comprimento crescente de cima para baixo. Todos os cantos são arredondados. Arquivos-fonte em `public/brand/`.
+- **Gradiente é permitido apenas na marca**: linear, dois pontos, mesmo matiz, ganhando intensidade no sentido da luz (vertical no prisma e no nome; horizontal nos feixes). As cores vêm dos pares `--mark-*-from` / `--mark-*-to` (`prism`, `beam-1..3`, `word`, `accent`) e trocam com o tema.
+- Em superfícies, fundo e componentes o gradiente continua **proibido** (ver seção 3).
+- Wordmark: "Prisma" em caixa de sentença, Red Hat Display 700 **contornado** (sem `<text>`), tracking -1,5%; o pingo do "i" é substituído por um prisma.
+- Tamanho mínimo: 32px de largura para o símbolo completo; abaixo disso, usar `app/icon.svg`. Área de proteção: metade da altura do símbolo em todos os lados.
+- Proibido: recolorir manualmente, rotacionar, aplicar sombra ou brilho, usar arco-íris ou cor quente, reordenar ou separar os feixes, usar sobre fotografia.
+- Favicon: `app/icon.svg` (cópia de `public/brand/icon.svg`), que acompanha o tema do sistema.
 
 ---
 
