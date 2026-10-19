@@ -19,3 +19,33 @@ export const ROW = "surface-card flex min-h-13 items-center justify-between gap-
 // Mensagens de retorno de formulário.
 export const MSG_OK = "text-sm text-brand-mid";
 export const MSG_ERROR = "text-sm text-destructive";
+
+// Diálogos e drawers sobrepostos: sólidos (sem blur), sobre um véu do fundo.
+export const OVERLAY = "fixed inset-0 flex bg-background/60";
+export const DIALOG =
+  "w-full max-w-md space-y-5 rounded-2xl border border-glass-edge bg-popover p-6 text-popover-foreground shadow-[var(--glass-shadow)]";
+
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+// Mantém o Tab dentro do contêiner (modal): do último volta ao primeiro e vice-versa.
+export function trapFocus(e: { key: string; shiftKey: boolean; preventDefault: () => void }, container: HTMLElement | null) {
+  if (e.key !== "Tab" || !container) return;
+  const items = Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((el) => el.getClientRects().length > 0);
+  if (items.length === 0) return e.preventDefault();
+  const first = items[0];
+  const last = items[items.length - 1];
+  const active = document.activeElement;
+  if (e.shiftKey && (active === first || !container.contains(active) || active === container)) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && (active === last || !container.contains(active))) {
+    e.preventDefault();
+    first.focus();
+  }
+}
+
+// Devolve o foco ao elemento que abriu o modal (se ainda estiver na página).
+export function restoreFocus(el: Element | null) {
+  if (el instanceof HTMLElement && el.isConnected && el !== document.body) el.focus();
+}

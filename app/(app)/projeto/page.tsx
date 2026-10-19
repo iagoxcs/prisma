@@ -2,16 +2,18 @@
 
 import Link from "next/link";
 import { Suspense, useEffect, useMemo, useState, type FormEvent } from "react";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/components/auth-provider";
 import { GanttChart, type GanttRow } from "@/components/gantt-chart";
 import { CategoriesPanel } from "@/components/project/categories-panel";
 import { Kanban } from "@/components/project/kanban";
 import { MembersPanel } from "@/components/project/members-panel";
 import { TaskPanel } from "@/components/project/task-panel";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ErrorState } from "@/components/ui/error-state";
 import { Input } from "@/components/ui/input";
+import { Skeleton, SkeletonList } from "@/components/ui/skeleton";
 import { shortDate } from "@/lib/format";
 import { getSupabase } from "@/lib/supabase/client";
 import { categoryColor, OVERDUE_BADGE, PROJECT_STATUS_COLOR, TASK_STATUS_COLOR } from "@/lib/theme/status";
@@ -27,16 +29,38 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "membros", label: "Membros" },
   { id: "escopos", label: "Escopos" },
 ];
+const DEFAULT_TAB: Tab = "quadro";
 const TASK_COLS = "id, project_id, category_id, title, description, status, assignee_id, start_date, due_date, position";
 
-// Rota por query string (?id=&task=) porque o site é exportado estaticamente.
+const tabsFor = (isExternal: boolean) => TABS.filter((t) => !(isExternal && t.id === "escopos"));
+
+// Rota por query string (?id=&task=&tab=) porque o site é exportado estaticamente.
 function ProjetoDetalhe() {
   const params = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
   const id = params.get("id") ?? "";
   const taskParam = params.get("task");
   const { profile } = useAuth();
-  const [tab, setTab] = useState<Tab>("quadro");
+  const rawTab = params.get("tab");
+  const allowedTabs = tabsFor(profile?.is_external ?? false);
+  const tab = allowedTabs.find((t) => t.id === rawTab)?.id ?? DEFAULT_TAB;
+  const [editing, setEditing] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
+
+  // replace (não push): trocar de aba não acumula entradas no histórico. id e task são preservados.
+  const setTab = (next: Tab | null) => {
+    const q = new URLSearchParams(params.toString());
+    if (next) q.set("tab", next);
+    else q.delete("tab");
+    router.replace(`${pathname}?${q.toString()}`, { scroll: false });
+  };
+
+  // Aba inválida (ou Escopos para externo): a URL cai no padrão. Só decide com o perfil carregado.
+  useEffect(() => {
+    if (profile && rawTab !== null && rawTab !== tab) setTab(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile, rawTab, tab]);
   const [dismissed, setDismissed] = useState<string | null>(null);
   const activeTaskId = openId ?? (taskParam && taskParam !== dismissed ? taskParam : null);
 
@@ -103,7 +127,8 @@ function ProjetoDetalhe() {
   }, [tasks.data, categories.data, people.data]);
 
   if (!id) return <p className="text-sm">Projeto não informado.</p>;
-  if (project.loading) return <p className="text-sm text-muted-foreground">Carregando…</p>;
+  if (project.loading) return <ProjectSkeleton />;
+  if (project.error) return <ErrorState what="o projeto" detail={project.error} onRetry={project.reload} />;
   const p = project.data;
   if (!p || !profile) return <p className="text-sm">Projeto não encontrado ou sem acesso.</p>;
 
@@ -116,28 +141,46 @@ function ProjetoDetalhe() {
       <Link href="/projetos/" className="-ml-1 inline-flex min-h-11 items-center gap-1.5 rounded-md px-1 text-sm font-medium text-muted-foreground hover:text-foreground">
         <ArrowLeft className="size-4" strokeWidth={1.75} aria-hidden /> Projetos
       </Link>
-      <div className="space-y-2">
-        <h1>{p.name}</h1>
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
-          <span className="flex items-center gap-2">
-            <span className="size-2 rounded-full" style={{ background: PROJECT_STATUS_COLOR[p.status] }} />
-            {PROJECT_STATUS_LABEL[p.status]}
-          </span>
-          {p.clients?.name && <span className="text-muted-foreground">{p.clients.name}</span>}
-          {overdue && <span className={cn("num rounded-md px-2.5 py-0.5 text-xs", OVERDUE_BADGE)}>vencido {shortDate(p.end_date!)}</span>}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="space-y-2">
+          <h1>{p.name}</h1>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+            <span className="flex items-center gap-2">
+              <span className="size-2 rounded-full" style={{ background: PROJECT_STATUS_COLOR[p.status] }} />
+              {PROJECT_STATUS_LABEL[p.status]}
+            </span>
+            {p.clients?.name && <span className="text-muted-foreground">{p.clients.name}</span>}
+            {overdue && <span className={cn("num rounded-md px-2.5 py-0.5 text-xs", OVERDUE_BADGE)}>vencido {shortDate(p.end_date!)}</span>}
+          </div>
         </div>
+        {isManager && (
+          <Button type="button" variant="outline" aria-expanded={editing} aria-controls="project-editor" onClick={() => setEditing((v) => !v)}>
+            Editar projeto
+            <ChevronDown strokeWidth={1.75} aria-hidden className={cn("transition-transform duration-150 motion-reduce:transition-none", editing && "rotate-180")} />
+          </Button>
+        )}
       </div>
-      {isManager && <ProjectEditor key={p.id + p.status + p.start_date + p.end_date} project={p} onSaved={project.reload} />}
+      {/* Recolhido com hidden (sem desmontar): fechar e reabrir mantém o que está sendo editado. */}
+      {isManager && (
+        <div id="project-editor" hidden={!editing}>
+          <ProjectEditor key={p.id + p.status + p.start_date + p.end_date} project={p} onSaved={project.reload} />
+        </div>
+      )}
 
       <div role="tablist" aria-label="Visões do projeto" className={SEGMENTED}>
-        {TABS.filter((t) => !(profile.is_external && t.id === "escopos")).map((t) => (
+        {allowedTabs.map((t) => (
           <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)} className={SEGMENT_ITEM}>
             {t.label}
           </button>
         ))}
       </div>
 
-      {tab === "quadro" && (
+      {(tab === "quadro" || tab === "cronograma") && tasks.error && (
+        <ErrorState what="as tarefas do projeto" detail={tasks.error} onRetry={tasks.reload} />
+      )}
+      {tab === "quadro" && tasks.loading && <BoardSkeleton />}
+      {tab === "cronograma" && tasks.loading && <SkeletonList count={6} label="Carregando o cronograma…" />}
+      {tab === "quadro" && !tasks.loading && !tasks.error && (
         <Kanban
           projectId={id}
           tasks={tasks.data ?? []}
@@ -149,7 +192,7 @@ function ProjetoDetalhe() {
           onChanged={tasks.reload}
         />
       )}
-      {tab === "cronograma" && <GanttChart rows={ganttRows} onSelect={setOpenId} />}
+      {tab === "cronograma" && !tasks.loading && !tasks.error && <GanttChart rows={ganttRows} onSelect={setOpenId} />}
       {tab === "membros" && <MembersPanel projectId={id} managerId={p.manager_id} canManage={isManager} onChanged={people.reload} />}
       {tab === "escopos" && <CategoriesPanel projectId={id} categories={categories.data ?? []} canManage={canManageScopes} onChanged={categories.reload} />}
 
@@ -167,6 +210,38 @@ function ProjetoDetalhe() {
           onChanged={tasks.reload}
         />
       )}
+    </div>
+  );
+}
+
+// Placeholders com a forma do Quadro: três colunas com cards.
+function BoardSkeleton() {
+  return (
+    <div role="status" className="grid gap-4 lg:grid-cols-3">
+      <span className="sr-only">Carregando o quadro…</span>
+      {[3, 2, 1].map((n, i) => (
+        <div key={i} className="glass-coluna flex flex-col gap-2.5 p-3.5">
+          <Skeleton className="mx-1 mb-1 h-5 w-24" />
+          {Array.from({ length: n }, (_, j) => (
+            <Skeleton key={j} className="h-28 w-full rounded-lg" />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ProjectSkeleton() {
+  return (
+    <div role="status" className="space-y-5">
+      <span className="sr-only">Carregando o projeto…</span>
+      <Skeleton className="h-11 w-28" />
+      <div className="space-y-2">
+        <Skeleton className="h-9 w-72 max-w-full" />
+        <Skeleton className="h-5 w-48" />
+      </div>
+      <Skeleton className="h-11 w-80 max-w-full rounded-lg" />
+      <BoardSkeleton />
     </div>
   );
 }
