@@ -1,15 +1,16 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import { Download, Paperclip, X } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { dateTime } from "@/lib/format";
 import { getSupabase } from "@/lib/supabase/client";
-import { MSG_ERROR, SELECT_CLASS as BASE_SELECT, TEXTAREA_CLASS } from "@/lib/ui";
+import { MSG_ERROR, OVERLAY, SELECT_CLASS as BASE_SELECT, TEXTAREA_CLASS, restoreFocus, trapFocus } from "@/lib/ui";
 import { useQuery } from "@/lib/use-query";
 import {
   MAX_ATTACHMENT_BYTES,
@@ -43,39 +44,81 @@ export function TaskPanel({
   onClose: () => void;
   onChanged: () => void;
 }) {
+  const asideRef = useRef<HTMLElement>(null);
+  const [dirty, setDirty] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const hasTask = !!task;
+
+  // Ao abrir, o foco entra no drawer; ao desmontar, volta para quem o abriu (card do Kanban, barra do Gantt).
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+    if (!hasTask) return;
+    const opener = document.activeElement;
+    asideRef.current?.focus();
+    return () => restoreFocus(opener);
+  }, [hasTask]);
+
+  // Esc, véu e X passam por aqui: com alterações não salvas em Details, pede confirmação antes de descartar.
+  const requestClose = () => (dirty ? setConfirmDiscard(true) : onClose());
 
   if (!task) return null;
   // Portal para o <body>: a lâmina (<main>) tem backdrop-filter, que prenderia o position: fixed dentro dela.
   // O drawer é sólido (bg-popover), como os diálogos: vidro sobre o Kanban comprometia a leitura dos campos.
   // key força o formulário a reinicializar ao trocar de tarefa.
-  return createPortal(
-    <div className="fixed inset-0 z-40 flex justify-end bg-background/60 p-0 md:p-5" onClick={onClose}>
-      <aside
-        role="dialog"
-        aria-modal="true"
-        aria-label="Detalhes da tarefa"
-        className="h-full w-full max-w-xl space-y-7 overflow-y-auto border-glass-edge bg-popover p-6 text-popover-foreground shadow-[var(--glass-shadow)] md:rounded-2xl md:border md:p-7"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between">
-          <span className="text-[0.8125rem] font-medium text-muted-foreground">Detalhes da tarefa</span>
-          <Button variant="ghost" size="icon" aria-label="Fechar" onClick={onClose}>
-            <X strokeWidth={1.75} />
-          </Button>
-        </div>
-        <Details key={taskId} task={task} categories={categories} people={people} onChanged={onChanged} onClose={onClose} />
-        <Checklist taskId={taskId} />
-        <Attachments taskId={taskId} projectId={task.project_id} />
-        <Comments taskId={taskId} isExternal={isExternal} />
-      </aside>
-    </div>,
-    document.body,
+  return (
+    <>
+      {createPortal(
+        <div className={`${OVERLAY} z-40 justify-end p-0 md:p-5`} onClick={requestClose}>
+          <aside
+            ref={asideRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Detalhes da tarefa"
+            tabIndex={-1}
+            className="h-full w-full max-w-xl space-y-7 overflow-y-auto border-glass-edge bg-popover p-6 text-popover-foreground shadow-[var(--glass-shadow)] outline-none md:rounded-2xl md:border md:p-7"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") requestClose();
+              trapFocus(e, asideRef.current);
+            }}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-[0.8125rem] font-medium text-muted-foreground">Detalhes da tarefa</span>
+              <Button variant="ghost" size="icon" aria-label="Fechar" onClick={requestClose}>
+                <X strokeWidth={1.75} />
+              </Button>
+            </div>
+            <Details key={taskId} task={task} categories={categories} people={people} onChanged={onChanged} onClose={onClose} onDirtyChange={setDirty} />
+            <Checklist taskId={taskId} />
+            <Attachments taskId={taskId} projectId={task.project_id} />
+            <Comments taskId={taskId} isExternal={isExternal} />
+          </aside>
+        </div>,
+        document.body,
+      )}
+      <ConfirmDialog
+        open={confirmDiscard}
+        title="Descartar alterações?"
+        description="As alterações nos detalhes desta tarefa ainda não foram salvas e serão perdidas."
+        confirmLabel="Descartar"
+        cancelLabel="Continuar editando"
+        destructive
+        onConfirm={onClose}
+        onCancel={() => setConfirmDiscard(false)}
+      />
+    </>
   );
+}
+
+function formFromTask(task: Task) {
+  return {
+    title: task.title,
+    description: task.description ?? "",
+    status: task.status,
+    assignee_id: task.assignee_id ?? "",
+    category_id: task.category_id ?? "",
+    start_date: task.start_date ?? "",
+    due_date: task.due_date ?? "",
+  };
 }
 
 function Details({
@@ -84,24 +127,25 @@ function Details({
   people,
   onChanged,
   onClose,
+  onDirtyChange,
 }: {
   task: Task;
   categories: Category[];
   people: Person[];
   onChanged: () => void;
   onClose: () => void;
+  onDirtyChange: (dirty: boolean) => void;
 }) {
-  const [form, setForm] = useState({
-    title: task.title,
-    description: task.description ?? "",
-    status: task.status,
-    assignee_id: task.assignee_id ?? "",
-    category_id: task.category_id ?? "",
-    start_date: task.start_date ?? "",
-    due_date: task.due_date ?? "",
-  });
+  const [form, setForm] = useState(() => formFromTask(task));
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  // Compara com os valores atuais da tarefa: depois de salvar e recarregar, o formulário volta a ficar limpo.
+  const original = formFromTask(task);
+  const dirty = (Object.keys(form) as (keyof typeof form)[]).some((k) => form[k] !== original[k]);
+  useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange]);
 
   async function save(e: FormEvent) {
     e.preventDefault();
@@ -125,9 +169,13 @@ function Details({
   }
 
   async function remove() {
-    if (!confirm("Excluir esta tarefa? Esta ação não pode ser desfeita.")) return;
+    setDeleting(true);
     const { error } = await getSupabase().from("tasks").delete().eq("id", task.id);
-    if (error) return setError(error.message);
+    setDeleting(false);
+    if (error) {
+      setConfirmDelete(false);
+      return setError(error.message);
+    }
     onChanged();
     onClose();
   }
@@ -184,8 +232,18 @@ function Details({
       {error && <p role="alert" className={MSG_ERROR}>{error}</p>}
       <div className="flex justify-between gap-2">
         <Button type="submit" disabled={busy}>{busy ? "Salvando…" : "Salvar"}</Button>
-        <Button type="button" variant="ghost" className="text-destructive hover:text-destructive" onClick={remove}>Excluir tarefa</Button>
+        <Button type="button" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => setConfirmDelete(true)}>Excluir tarefa</Button>
       </div>
+      <ConfirmDialog
+        open={confirmDelete}
+        title="Excluir tarefa?"
+        description="Esta ação não pode ser desfeita."
+        confirmLabel="Excluir tarefa"
+        destructive
+        busy={deleting}
+        onConfirm={remove}
+        onCancel={() => setConfirmDelete(false)}
+      />
     </form>
   );
 }

@@ -7,6 +7,8 @@ import { getSupabase } from "@/lib/supabase/client";
 import { useQuery } from "@/lib/use-query";
 import { todayISO, type Task } from "@/types/domain";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ErrorState } from "@/components/ui/error-state";
+import { SkeletonList } from "@/components/ui/skeleton";
 
 type MyTask = Pick<Task, "id" | "project_id" | "title" | "due_date"> & { projects: { name: string } | null };
 
@@ -89,12 +91,10 @@ export default function DashboardPage() {
       <section className="space-y-4">
         <h2>Minhas tarefas</h2>
         {tasks.loading ? (
-          <p className="text-sm text-muted-foreground">Carregando…</p>
+          <SkeletonList variant="card" count={2} label="Carregando suas tarefas…" />
         ) : tasks.error ? (
-          <p role="alert" className="text-sm text-destructive">
-            Não foi possível carregar suas tarefas: {tasks.error}
-          </p>
-        ) : !tasks.data?.length ? (
+          <ErrorState what="suas tarefas" detail={tasks.error} onRetry={tasks.reload} />
+        ) :!tasks.data?.length ? (
           <p className="text-sm text-muted-foreground">Nenhuma tarefa pendente atribuída a você</p>
         ) : !visible.length ? (
           <p className="text-sm text-muted-foreground">Nenhuma tarefa com prazo nos próximos 7 dias</p>

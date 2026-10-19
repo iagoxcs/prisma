@@ -5,8 +5,9 @@ import { useMemo } from "react";
 import { GanttChart, type GanttRow } from "@/components/gantt-chart";
 import { getSupabase } from "@/lib/supabase/client";
 import { PROJECT_STATUS_COLOR } from "@/lib/theme/status";
+import { ErrorState } from "@/components/ui/error-state";
+import { SkeletonList } from "@/components/ui/skeleton";
 import { useQuery } from "@/lib/use-query";
-import { MSG_ERROR } from "@/lib/ui";
 import { PROJECT_STATUS_LABEL, todayISO, type Project, type ProjectStatus } from "@/types/domain";
 
 // Cronograma de portfólio: um projeto por linha, respeitando o RLS de quem consulta.
@@ -54,9 +55,10 @@ export default function CronogramaPage() {
           </li>
         </ul>
       </div>
-      {projects.error && <p role="alert" className={MSG_ERROR}>{projects.error}</p>}
       {projects.loading ? (
-        <p className="text-sm text-muted-foreground">Carregando…</p>
+        <SkeletonList count={6} label="Carregando o cronograma…" />
+      ) : projects.error ? (
+        <ErrorState what="o cronograma de projetos" detail={projects.error} onRetry={projects.reload} />
       ) : (
         <GanttChart rows={rows} onSelect={(id) => router.push(`/projeto/?id=${id}`)} />
       )}
