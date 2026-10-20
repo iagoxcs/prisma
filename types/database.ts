@@ -383,6 +383,7 @@ export type Database = {
       notifications: {
         Row: {
           created_at: string
+          emailed_at: string | null
           entity_id: string
           entity_type: string
           id: string
@@ -394,6 +395,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          emailed_at?: string | null
           entity_id: string
           entity_type?: string
           id?: string
@@ -405,6 +407,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          emailed_at?: string | null
           entity_id?: string
           entity_type?: string
           id?: string
@@ -945,6 +948,7 @@ export type Database = {
         Args: never
         Returns: Database["public"]["Enums"]["user_role"]
       }
+      check_cron_secret: { Args: { secret: string }; Returns: boolean }
       generate_deadline_notifications: { Args: never; Returns: number }
       has_role: {
         Args: { r: Database["public"]["Enums"]["user_role"] }

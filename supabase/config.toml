@@ -21,9 +21,23 @@ additional_redirect_urls = ["http://localhost:3000/**"]
 enable_signup = false          # usuários entram por convite (internos e externos)
 minimum_password_length = 10
 
+# E-mails do Auth em pt-BR. Em produção o envio sai pelo SMTP do Resend e os templates
+# são colados no painel (Authentication → Emails); ver docs/DEPLOY.md, seção "E-mail (Resend)".
+[auth.email.template.recovery]
+subject = "Prisma: redefinir sua senha"
+content_path = "./supabase/templates/recovery.html"
+
+[auth.email.template.email_change]
+subject = "Prisma: confirme seu novo e-mail"
+content_path = "./supabase/templates/email_change.html"
+
 [storage]
 enabled = true
 file_size_limit = "20MiB"
 
 [realtime]
 enabled = true
+
+# Chamada só pelo pg_cron, autenticada pelo cabeçalho x-cron-secret (ver migração deadline_emails).
+[functions.deadline-emails]
+verify_jwt = false

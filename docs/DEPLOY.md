@@ -41,6 +41,36 @@ Supabase → Authentication → URL Configuration:
 
 Mantenha o cadastro aberto desativado (Authentication → Sign In / Providers → *Allow new users to sign up* desligado) e ative backups (RNF-06).
 
+### 1.2 E-mail (Resend)
+O Prisma envia dois tipos de e-mail, ambos pelo Resend e a partir do domínio já verificado lá:
+
+| E-mail | Quem envia | Configuração |
+|---|---|---|
+| Recuperar senha, troca de e-mail | Supabase Auth, via SMTP do Resend | Painel do Supabase (abaixo) |
+| Alertas de prazo (resumo diário às 08:05) | Edge Function `deadline-emails`, via API do Resend | Secrets da função (abaixo) |
+
+**a) SMTP do Auth.** Supabase → Authentication → Emails → *SMTP Settings* → *Enable custom SMTP*:
+- Host `smtp.resend.com`, porta `465`, usuário `resend`, senha = chave da API do Resend (resend.com → API Keys, permissão *Sending access*).
+- Sender email: um endereço do domínio verificado (ex.: `prisma@<domínio>`); Sender name: `Prisma · Ambiente Consultoria`.
+
+Depois, em Authentication → *Rate Limits*, suba *Rate limit for sending emails* (ex.: 30/h). O limite de 2/h vale só para o SMTP embutido.
+
+**b) Templates em pt-BR.** Authentication → Emails → *Templates*: cole o conteúdo e o assunto de
+- *Reset Password*: `supabase/templates/recovery.html`, assunto `Prisma: redefinir sua senha`
+- *Change Email Address*: `supabase/templates/email_change.html`, assunto `Prisma: confirme seu novo e-mail`
+
+Os arquivos são a fonte. Ao mudar um, cole de novo no painel. O link de recuperação aponta para `/redefinir-senha/?token_hash=…`, que valida o token no navegador (funciona no site estático). Por isso, o *Site URL* do item 1.1 precisa ser o domínio de produção.
+
+**c) Secrets da Edge Function** (uma vez, fora do GitHub):
+```bash
+npx supabase secrets set --project-ref jipaumhvkldxnmwfdmji RESEND_API_KEY=<chave> EMAIL_FROM="Prisma <prisma@dominio-verificado>"
+```
+Também dá para fazer em Supabase → Edge Functions → *Secrets*. A chave do Resend nunca vai para secrets do GitHub nem para `NEXT_PUBLIC_*`.
+
+**Como o alerta por e-mail funciona.** O job `prisma-deadline-notifications` (08:00) gera as notificações. O job `prisma-deadline-emails` (08:05, migração `20261020134510_deadline_emails`) chama a função com o cabeçalho `x-cron-secret`. Esse segredo foi gerado pela própria migração no Vault (`prisma_cron_secret`); não há passo manual. A função manda um resumo por pessoa com as notificações `due_soon`/`overdue` dos últimos 2 dias ainda não enviadas e marca `notifications.emailed_at`. O envio liga e desliga em Configurações → Parâmetros → *Também enviar os alertas por e-mail*.
+
+**Testar:** em Integrations → Cron → `prisma-deadline-emails` → *Run*; resultado em Edge Functions → `deadline-emails` → *Logs* (`{ sent, failed }`). Sem pendências, a resposta é `sent: 0`. Se der 500 com "defina RESEND_API_KEY", falta o passo c.
+
 ---
 
 ## 2. Segredos do GitHub (uma vez)
