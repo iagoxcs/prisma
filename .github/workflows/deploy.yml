@@ -102,7 +102,11 @@ jobs:
           echo "== pasta de destino"; curl -sSk --ssl-reqd --list-only --user "$FTP_USER:$FTP_PASS" "ftp://$FTP_HOST/$DIR" || true
       # Envio incremental: só arquivos alterados; o estado fica em .ftp-deploy-sync-state.json
       # (bloqueado para download pelo .htaccess).
-      - name: Enviar ./out por FTPS
+      # A conexão com a KingHost às vezes cai (connect ETIMEDOUT na porta 21): tenta até 3 vezes,
+      # com 45 s entre elas. A 3ª tentativa não tem continue-on-error, então a falha dela derruba o job.
+      - name: Enviar ./out por FTPS (1/3)
+        id: ftp1
+        continue-on-error: true
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server: ${{ secrets.KINGHOST_FTP_HOST }}
@@ -111,6 +115,37 @@ jobs:
           protocol: ftps
           local-dir: ./out/
           server-dir: ${{ steps.ftpdir.outputs.dir }}   # ex.: /www/prisma/ (conferir no painel da KingHost)
+          log-level: ${{ vars.FTP_LOG_LEVEL || 'standard' }}
+      - name: Aguardar antes da tentativa 2
+        if: steps.ftp1.outcome == 'failure'
+        run: echo "::warning::Envio por FTPS falhou na tentativa 1/3; nova tentativa em 45 s."; sleep 45
+      - name: Enviar ./out por FTPS (2/3)
+        id: ftp2
+        if: steps.ftp1.outcome == 'failure'
+        continue-on-error: true
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.KINGHOST_FTP_HOST }}
+          username: ${{ secrets.KINGHOST_FTP_USER }}
+          password: ${{ secrets.KINGHOST_FTP_PASSWORD }}
+          protocol: ftps
+          local-dir: ./out/
+          server-dir: ${{ steps.ftpdir.outputs.dir }}
+          log-level: ${{ vars.FTP_LOG_LEVEL || 'standard' }}
+      - name: Aguardar antes da tentativa 3
+        if: steps.ftp2.outcome == 'failure'
+        run: echo "::warning::Envio por FTPS falhou na tentativa 2/3; nova tentativa em 45 s."; sleep 45
+      - name: Enviar ./out por FTPS (3/3)
+        id: ftp3
+        if: steps.ftp2.outcome == 'failure'
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.KINGHOST_FTP_HOST }}
+          username: ${{ secrets.KINGHOST_FTP_USER }}
+          password: ${{ secrets.KINGHOST_FTP_PASSWORD }}
+          protocol: ftps
+          local-dir: ./out/
+          server-dir: ${{ steps.ftpdir.outputs.dir }}
           log-level: ${{ vars.FTP_LOG_LEVEL || 'standard' }}
       - name: Conferir o site no ar
         run: |
