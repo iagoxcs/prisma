@@ -24,6 +24,7 @@ import { MSG_ERROR, SEGMENTED, SEGMENT_ITEM, SELECT_CLASS } from "@/lib/ui";
 import { useQuery } from "@/lib/use-query";
 import { cn } from "@/lib/utils";
 import { PROJECT_STATUS_LABEL, todayISO, type Category, type Person, type Project, type ProjectStatus, type Task } from "@/types/domain";
+import { Select } from "@/components/ui/select";
 
 type Tab = "quadro" | "lista" | "cronograma" | "documentos" | "contexto" | "membros" | "escopos";
 const TABS: { id: Tab; label: string }[] = [
@@ -283,11 +284,11 @@ function ProjectEditor({ project, onSaved }: { project: Project; onSaved: () => 
     <form onSubmit={save} className="glass-coluna flex flex-wrap items-end gap-3 p-4 text-sm">
       <label className="space-y-1.5">
         <span className="block text-[0.8125rem] font-medium text-muted-foreground">Status</span>
-        <select className={SELECT_CLASS} value={status} onChange={(e) => setStatus(e.target.value as ProjectStatus)}>
+        <Select className={SELECT_CLASS} value={status} onChange={(e) => setStatus(e.target.value as ProjectStatus)}>
           {(Object.keys(PROJECT_STATUS_LABEL) as ProjectStatus[]).map((s) => (
             <option key={s} value={s}>{PROJECT_STATUS_LABEL[s]}</option>
           ))}
-        </select>
+        </Select>
       </label>
       <label className="space-y-1.5">
         <span className="block text-[0.8125rem] font-medium text-muted-foreground">Início</span>

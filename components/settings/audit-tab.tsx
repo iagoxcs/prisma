@@ -5,6 +5,7 @@ import { getSupabase } from "@/lib/supabase/client";
 import { dateTime } from "@/lib/format";
 import { MSG_ERROR, ROW_LIST, SELECT_CLASS } from "@/lib/ui";
 import { useQuery } from "@/lib/use-query";
+import { Select } from "@/components/ui/select";
 
 interface LogRow {
   id: string;
@@ -46,12 +47,12 @@ export function AuditTab() {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-3">
-        <select aria-label="Filtrar por tipo" className={SELECT_CLASS} value={entity} onChange={(e) => setEntity(e.target.value)}>
+        <Select aria-label="Filtrar por tipo" className={SELECT_CLASS} value={entity} onChange={(e) => setEntity(e.target.value)}>
           <option value="">Todos os tipos</option>
           {Object.entries(ENTITY_LABEL).map(([k, v]) => (
             <option key={k} value={k}>{v}</option>
           ))}
-        </select>
+        </Select>
         <span className="text-[0.8125rem] text-muted-foreground">Últimos 100 registros. Gerado automaticamente; não pode ser editado.</span>
       </div>
       {logs.error && <p role="alert" className={MSG_ERROR}>{logs.error}</p>}

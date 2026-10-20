@@ -16,6 +16,7 @@ import { usePageSize } from "@/lib/use-page-size";
 import { useQuery } from "@/lib/use-query";
 import { cn } from "@/lib/utils";
 import { CONTEXT_KIND_LABEL, type ContextKind, type ProjectContextEntry } from "@/types/domain";
+import { Select } from "@/components/ui/select";
 
 // Corpo fica fora da listagem (até 500 mil caracteres): só é buscado ao ler ou editar.
 type Entry = Omit<ProjectContextEntry, "body"> & { profiles?: { name: string } | null };
@@ -109,7 +110,7 @@ export function ContextPanel({ projectId, isManager }: { projectId: string; isMa
             setPage(1);
           }}
         />
-        <select
+        <Select
           aria-label="Filtrar por tipo"
           className={SELECT_CLASS}
           value={kind}
@@ -122,7 +123,7 @@ export function ContextPanel({ projectId, isManager }: { projectId: string; isMa
           {(Object.keys(CONTEXT_KIND_LABEL) as ContextKind[]).map((k) => (
             <option key={k} value={k}>{CONTEXT_KIND_LABEL[k]}</option>
           ))}
-        </select>
+        </Select>
         {!creating && !editing && (
           <Button type="button" onClick={() => setCreating(true)}>
             <Plus strokeWidth={1.75} aria-hidden /> Novo registro
@@ -298,11 +299,11 @@ function EntryForm({
       <div className="flex flex-wrap gap-3">
         <label className="space-y-1.5">
           <span className={LABEL}>Tipo</span>
-          <select className={SELECT_CLASS} value={d.kind} onChange={(e) => set("kind", e.target.value as ContextKind)}>
+          <Select className={SELECT_CLASS} value={d.kind} onChange={(e) => set("kind", e.target.value as ContextKind)}>
             {(Object.keys(CONTEXT_KIND_LABEL) as ContextKind[]).map((k) => (
               <option key={k} value={k}>{CONTEXT_KIND_LABEL[k]}</option>
             ))}
-          </select>
+          </Select>
         </label>
         <label className="min-w-64 flex-1 space-y-1.5">
           <span className={LABEL}>Título</span>

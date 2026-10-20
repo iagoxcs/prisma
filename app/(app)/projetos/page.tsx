@@ -16,6 +16,7 @@ import { OVERDUE_BADGE, PROJECT_STATUS_COLOR } from "@/lib/theme/status";
 import { MSG_ERROR, ROW_LIST, SELECT_CLASS } from "@/lib/ui";
 import { cn } from "@/lib/utils";
 import { PROJECT_STATUS_LABEL, todayISO, type Client, type Person, type Project, type ProjectStatus } from "@/types/domain";
+import { Select } from "@/components/ui/select";
 
 type Sort = "criacao" | "nome" | "prazo";
 const SORTS: { id: Sort; label: string }[] = [
@@ -205,7 +206,7 @@ function ProjetosLista() {
       {canCreate && (
         <form onSubmit={create} className="flex max-w-2xl flex-wrap gap-2">
           <Input className="min-w-48 flex-1" placeholder="Nome do projeto" required value={name} onChange={(e) => setName(e.target.value)} />
-          <select
+          <Select
             aria-label="Cliente"
             className={SELECT_CLASS}
             value={clientId}
@@ -215,7 +216,7 @@ function ProjetosLista() {
             {clients.map((c) => (
               <option key={c.id} value={c.id}>{c.name}</option>
             ))}
-          </select>
+          </Select>
           <Button type="submit">Criar projeto</Button>
         </form>
       )}
@@ -240,29 +241,29 @@ function ProjetosLista() {
               <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" strokeWidth={1.75} aria-hidden />
               <Input type="search" aria-label="Buscar por projeto ou cliente" placeholder="Buscar por projeto ou cliente" className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
             </div>
-            <select aria-label="Filtrar por status" className={SELECT_CLASS} value={status} onChange={(e) => setQuery({ status: e.target.value || null })}>
+            <Select aria-label="Filtrar por status" className={SELECT_CLASS} value={status} onChange={(e) => setQuery({ status: e.target.value || null })}>
               <option value="">Todos os status</option>
               {(Object.keys(PROJECT_STATUS_LABEL) as ProjectStatus[]).map((s) => (
                 <option key={s} value={s}>{PROJECT_STATUS_LABEL[s]}</option>
               ))}
-            </select>
-            <select aria-label="Filtrar por cliente" className={SELECT_CLASS} value={client} onChange={(e) => setQuery({ client: e.target.value || null })}>
+            </Select>
+            <Select aria-label="Filtrar por cliente" className={SELECT_CLASS} value={client} onChange={(e) => setQuery({ client: e.target.value || null })}>
               <option value="">Todos os clientes</option>
               {clientOptions.map(([id, label]) => (
                 <option key={id} value={id}>{label}</option>
               ))}
-            </select>
-            <select aria-label="Filtrar por gerente" className={SELECT_CLASS} value={manager} onChange={(e) => setQuery({ manager: e.target.value || null })}>
+            </Select>
+            <Select aria-label="Filtrar por gerente" className={SELECT_CLASS} value={manager} onChange={(e) => setQuery({ manager: e.target.value || null })}>
               <option value="">Todos os gerentes</option>
               {managerOptions.map(([id, label]) => (
                 <option key={id} value={id}>{label}</option>
               ))}
-            </select>
-            <select aria-label="Ordenar por" className={SELECT_CLASS} value={sort} onChange={(e) => setQuery({ sort: e.target.value === "criacao" ? null : e.target.value })}>
+            </Select>
+            <Select aria-label="Ordenar por" className={SELECT_CLASS} value={sort} onChange={(e) => setQuery({ sort: e.target.value === "criacao" ? null : e.target.value })}>
               {SORTS.map((s) => (
                 <option key={s.id} value={s.id}>Ordenar: {s.label}</option>
               ))}
-            </select>
+            </Select>
           </div>
           <div className="flex min-h-11 flex-wrap items-center gap-3 text-sm text-muted-foreground">
             <p aria-live="polite">

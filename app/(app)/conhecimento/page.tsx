@@ -22,6 +22,7 @@ import {
   type KnowledgeKind,
   type KnowledgeStatus,
 } from "@/types/domain";
+import { Select } from "@/components/ui/select";
 
 type Card = Pick<KnowledgeItem, "id" | "title" | "kind" | "tags" | "summary" | "status" | "updated_at"> & {
   methodology: { title: string } | null;
@@ -89,12 +90,12 @@ export default function ConhecimentoPage() {
             setPage(1);
           }}
         />
-        <select aria-label="Filtrar por tipo" className={SELECT_CLASS} value={kind} onChange={(e) => filter(setKind)(e.target.value as KnowledgeKind | "")}>
+        <Select aria-label="Filtrar por tipo" className={SELECT_CLASS} value={kind} onChange={(e) => filter(setKind)(e.target.value as KnowledgeKind | "")}>
           <option value="">Todos os tipos</option>
           {(Object.keys(KNOWLEDGE_KIND_LABEL) as KnowledgeKind[]).map((k) => (
             <option key={k} value={k}>{KNOWLEDGE_KIND_LABEL[k]}</option>
           ))}
-        </select>
+        </Select>
         <Input
           aria-label="Filtrar por tag"
           placeholder="Tag"
@@ -106,12 +107,12 @@ export default function ConhecimentoPage() {
           }}
         />
         {canManage && (
-          <select aria-label="Filtrar por status" className={SELECT_CLASS} value={status} onChange={(e) => filter(setStatus)(e.target.value as KnowledgeStatus | "")}>
+          <Select aria-label="Filtrar por status" className={SELECT_CLASS} value={status} onChange={(e) => filter(setStatus)(e.target.value as KnowledgeStatus | "")}>
             <option value="">Todos os status</option>
             {(Object.keys(KNOWLEDGE_STATUS_LABEL) as KnowledgeStatus[]).map((s) => (
               <option key={s} value={s}>{KNOWLEDGE_STATUS_LABEL[s]}</option>
             ))}
-          </select>
+          </Select>
         )}
       </div>
 

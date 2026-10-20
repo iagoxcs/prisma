@@ -9,6 +9,7 @@ import { MSG_ERROR, SELECT_CLASS } from "@/lib/ui";
 import { useQuery } from "@/lib/use-query";
 import { cn } from "@/lib/utils";
 import { KNOWLEDGE_KIND_LABEL, type KnowledgeKind } from "@/types/domain";
+import { Select } from "@/components/ui/select";
 
 const LABEL = "block text-[0.8125rem] font-medium text-muted-foreground";
 
@@ -69,22 +70,22 @@ export function NewItem({
       {!methodologyId && (
         <label className="space-y-1.5">
           <span className={LABEL}>Tipo</span>
-          <select className={SELECT_CLASS} value={kind} onChange={(e) => setKind(e.target.value as KnowledgeKind)}>
+          <Select className={SELECT_CLASS} value={kind} onChange={(e) => setKind(e.target.value as KnowledgeKind)}>
             {(Object.keys(KNOWLEDGE_KIND_LABEL) as KnowledgeKind[]).map((k) => (
               <option key={k} value={k}>{KNOWLEDGE_KIND_LABEL[k]}</option>
             ))}
-          </select>
+          </Select>
         </label>
       )}
       {!methodologyId && kind === "modelo" && (
         <label className="space-y-1.5">
           <span className={LABEL}>Metodologia</span>
-          <select className={SELECT_CLASS} required value={methodology} onChange={(e) => setMethodology(e.target.value)}>
+          <Select className={SELECT_CLASS} required value={methodology} onChange={(e) => setMethodology(e.target.value)}>
             <option value="">Escolher…</option>
             {(methodologies.data ?? []).map((m) => (
               <option key={m.id} value={m.id}>{m.title}</option>
             ))}
-          </select>
+          </Select>
         </label>
       )}
       <Button type="submit" disabled={busy || !title.trim()}>{busy ? "Criando…" : "Criar rascunho"}</Button>

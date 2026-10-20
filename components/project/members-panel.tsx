@@ -8,6 +8,7 @@ import { getSupabase } from "@/lib/supabase/client";
 import { MSG_ERROR, ROW, ROW_LIST, SELECT_CLASS } from "@/lib/ui";
 import { useQuery } from "@/lib/use-query";
 import { ROLE_LABEL, type Person, type UserRole } from "@/types/domain";
+import { Select } from "@/components/ui/select";
 
 interface MemberRow {
   user_id: string;
@@ -100,12 +101,12 @@ export function MembersPanel({
       </ul>
       {canManage && (
         <form onSubmit={add} className="flex gap-2">
-          <select aria-label="Pessoa" required className={`${SELECT_CLASS} min-w-0 flex-1`} value={userId} onChange={(e) => setUserId(e.target.value)}>
+          <Select aria-label="Pessoa" required className={`${SELECT_CLASS} min-w-0 flex-1`} value={userId} onChange={(e) => setUserId(e.target.value)}>
             <option value="">Adicionar pessoa…</option>
             {options.map((o) => (
               <option key={o.id} value={o.id}>{o.name} ({ROLE_LABEL[o.role]})</option>
             ))}
-          </select>
+          </Select>
           <Button type="submit">Adicionar</Button>
         </form>
       )}

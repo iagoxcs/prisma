@@ -29,6 +29,7 @@ import { categoryColor, OVERDUE_BADGE, TASK_STATUS_DOT } from "@/lib/theme/statu
 import { MSG_ERROR, SELECT_CLASS } from "@/lib/ui";
 import { cn } from "@/lib/utils";
 import { TASK_STATUS_LABEL, todayISO, type Category, type Person, type Task, type TaskStatus } from "@/types/domain";
+import { Select } from "@/components/ui/select";
 
 const COLUMNS: TaskStatus[] = ["todo", "doing", "done"];
 const MIN_GAP = 1e-6;
@@ -283,18 +284,18 @@ export function Kanban({
             <Upload strokeWidth={1.75} aria-hidden /> Importar CSV
           </Button>
         )}
-        <select aria-label="Filtrar por responsável" className={SELECT_CLASS} value={filterAssignee} onChange={(e) => setFilterAssignee(e.target.value)}>
+        <Select aria-label="Filtrar por responsável" className={SELECT_CLASS} value={filterAssignee} onChange={(e) => setFilterAssignee(e.target.value)}>
           <option value="">Todos os responsáveis</option>
           {people.map((p) => (
             <option key={p.id} value={p.id}>{p.name}</option>
           ))}
-        </select>
-        <select aria-label="Filtrar por escopo" className={SELECT_CLASS} value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)}>
+        </Select>
+        <Select aria-label="Filtrar por escopo" className={SELECT_CLASS} value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)}>
           <option value="">Todos os escopos</option>
           {categories.map((c) => (
             <option key={c.id} value={c.id}>{c.name}</option>
           ))}
-        </select>
+        </Select>
       </div>
       {error && <p role="alert" className={MSG_ERROR}>{error}</p>}
       {importing && (

@@ -16,6 +16,7 @@ import { MSG_ERROR, SELECT_CLASS } from "@/lib/ui";
 import { usePageSize } from "@/lib/use-page-size";
 import { useQuery } from "@/lib/use-query";
 import { DOC_CATEGORY_LABEL, type DocCategory, type ProjectDocument } from "@/types/domain";
+import { Select } from "@/components/ui/select";
 
 const BUCKET = "task-attachments";
 const COLS =
@@ -204,22 +205,22 @@ export function DocumentIndex({ projectId }: { projectId?: string }) {
           }}
         />
         {!projectId && (
-          <select aria-label="Filtrar por projeto" className={SELECT_CLASS} value={project} onChange={(e) => filter(setProject)(e.target.value)}>
+          <Select aria-label="Filtrar por projeto" className={SELECT_CLASS} value={project} onChange={(e) => filter(setProject)(e.target.value)}>
             <option value="">Todos os projetos</option>
             {(projects.data ?? []).map((p) => (
               <option key={p.id} value={p.id}>{p.name}</option>
             ))}
-          </select>
+          </Select>
         )}
         {projectId && (
-          <select aria-label="Filtrar por escopo" className={SELECT_CLASS} value={category} onChange={(e) => filter(setCategory)(e.target.value)}>
+          <Select aria-label="Filtrar por escopo" className={SELECT_CLASS} value={category} onChange={(e) => filter(setCategory)(e.target.value)}>
             <option value="">Todos os escopos</option>
             {(categories.data ?? []).map((c) => (
               <option key={c.id} value={c.id}>{c.name}</option>
             ))}
-          </select>
+          </Select>
         )}
-        <select
+        <Select
           aria-label="Filtrar por categoria do documento"
           className={SELECT_CLASS}
           value={docCategory}
@@ -230,14 +231,14 @@ export function DocumentIndex({ projectId }: { projectId?: string }) {
             <option key={c} value={c}>{DOC_CATEGORY_LABEL[c]}</option>
           ))}
           <option value="sem">Sem categoria</option>
-        </select>
-        <select aria-label="Filtrar por tipo de arquivo" className={SELECT_CLASS} value={type} onChange={(e) => filter(setType)(e.target.value as FileType | "")}>
+        </Select>
+        <Select aria-label="Filtrar por tipo de arquivo" className={SELECT_CLASS} value={type} onChange={(e) => filter(setType)(e.target.value as FileType | "")}>
           <option value="">Todos os tipos</option>
           {(Object.keys(FILE_TYPES) as (keyof typeof FILE_TYPES)[]).map((k) => (
             <option key={k} value={k}>{FILE_TYPES[k].label}</option>
           ))}
           <option value="outros">Outros</option>
-        </select>
+        </Select>
         <label className="space-y-1.5">
           <span className="block text-[0.8125rem] font-medium text-muted-foreground">Enviado de</span>
           <Input type="date" className="num" value={from} max={to || undefined} onChange={(e) => filter(setFrom)(e.target.value)} />

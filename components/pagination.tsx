@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { PAGE_SIZES } from "@/lib/use-page-size";
 import { SELECT_CLASS } from "@/lib/ui";
 import { cn } from "@/lib/utils";
+import { Select } from "@/components/ui/select";
 
 // Paginação no cliente: `page` começa em 1. Use com usePageSize(scope) para persistir o tamanho.
 export function Pagination({
@@ -30,7 +31,7 @@ export function Pagination({
 
   return (
     <nav aria-label="Paginação" className={cn("flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-sm", className)}>
-      <select
+      <Select
         aria-label="Itens por página"
         className={cn(SELECT_CLASS, "num min-h-11")}
         value={pageSize}
@@ -42,7 +43,7 @@ export function Pagination({
         {PAGE_SIZES.map((s) => (
           <option key={s} value={s}>{s}</option>
         ))}
-      </select>
+      </Select>
       <div className="flex items-center gap-3">
         <p className="num text-muted-foreground" aria-live="polite">
           {from}–{to} de {total}
