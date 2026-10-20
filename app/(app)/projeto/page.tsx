@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense, useEffect, useMemo, useState, type FormEvent } from "react";
+import { Suspense, useEffect, useMemo, useState, type FormEvent, type KeyboardEvent } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/components/auth-provider";
 import { DocumentIndex } from "@/components/documents/document-index";
@@ -42,6 +42,8 @@ const TASK_COLS = "id, project_id, category_id, title, description, status, assi
 // Contexto e Escopos são só da equipe interna.
 const INTERNAL_TABS: Tab[] = ["contexto", "escopos"];
 const tabsFor = (isExternal: boolean) => TABS.filter((t) => !(isExternal && INTERNAL_TABS.includes(t.id)));
+const tabId = (t: Tab) => `projeto-tab-${t}`;
+const panelId = (t: Tab) => `projeto-painel-${t}`;
 
 // Rota por query string (?id=&task=&tab=) porque o site é exportado estaticamente.
 function ProjetoDetalhe() {
@@ -63,6 +65,18 @@ function ProjetoDetalhe() {
     if (next) q.set("tab", next);
     else q.delete("tab");
     router.replace(`${pathname}?${q.toString()}`, { scroll: false });
+  };
+
+  // Padrão ARIA de tabs: ←/→ (circular), Home e End movem o foco e já ativam a aba.
+  const onTabKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    const i = allowedTabs.findIndex((t) => t.id === tab);
+    const last = allowedTabs.length - 1;
+    const target = ({ ArrowLeft: i <= 0 ? last : i - 1, ArrowRight: i >= last ? 0 : i + 1, Home: 0, End: last } as Record<string, number>)[e.key];
+    if (target === undefined) return;
+    e.preventDefault();
+    const next = allowedTabs[target].id;
+    document.getElementById(tabId(next))?.focus();
+    if (next !== tab) setTab(next);
   };
 
   // Aba inválida (ou Contexto/Escopos para externo): a URL cai no padrão. Só decide com o perfil carregado.
@@ -177,40 +191,53 @@ function ProjetoDetalhe() {
       )}
 
       {/* Em telas estreitas as abas rolam na horizontal em vez de quebrar linha. */}
-      <div role="tablist" aria-label="Visões do projeto" className={cn(SEGMENTED, "max-w-full flex-nowrap overflow-x-auto")}>
+      <div role="tablist" aria-label="Visões do projeto" onKeyDown={onTabKeyDown} className={cn(SEGMENTED, "max-w-full flex-nowrap overflow-x-auto")}>
         {allowedTabs.map((t) => (
-          <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)} className={cn(SEGMENT_ITEM, "shrink-0 whitespace-nowrap")}>
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            id={tabId(t.id)}
+            aria-controls={panelId(t.id)}
+            aria-selected={tab === t.id}
+            tabIndex={tab === t.id ? 0 : -1}
+            onClick={() => setTab(t.id)}
+            className={cn(SEGMENT_ITEM, "shrink-0 whitespace-nowrap")}
+          >
             {t.label}
           </button>
         ))}
       </div>
 
-      {(tab === "quadro" || tab === "lista" || tab === "cronograma") && tasks.error && (
-        <ErrorState what="as tarefas do projeto" detail={tasks.error} onRetry={tasks.reload} />
-      )}
-      {tab === "quadro" && tasks.loading && <BoardSkeleton />}
-      {tab === "lista" && tasks.loading && <SkeletonList count={6} label="Carregando a lista…" />}
-      {tab === "cronograma" && tasks.loading && <SkeletonList count={6} label="Carregando o cronograma…" />}
-      {tab === "quadro" && !tasks.loading && !tasks.error && (
-        <Kanban
-          projectId={id}
-          tasks={tasks.data ?? []}
-          categories={categories.data ?? []}
-          people={people.data ?? []}
-          canCreate={!profile.is_external}
-          canManageScopes={canManageScopes}
-          onOpen={setOpenId}
-          onChanged={tasks.reload}
-        />
-      )}
-      {tab === "lista" && !tasks.loading && !tasks.error && (
-        <TaskList tasks={tasks.data ?? []} categories={categories.data ?? []} people={people.data ?? []} onOpen={setOpenId} />
-      )}
-      {tab === "cronograma" && !tasks.loading && !tasks.error && <GanttChart rows={ganttRows} onSelect={setOpenId} />}
-      {tab === "documentos" && <DocumentIndex projectId={id} />}
-      {tab === "contexto" && <ContextPanel projectId={id} isManager={isManager} />}
-      {tab === "membros" && <MembersPanel projectId={id} managerId={p.manager_id} canManage={isManager} onChanged={people.reload} />}
-      {tab === "escopos" && <CategoriesPanel projectId={id} categories={categories.data ?? []} canManage={canManageScopes} onChanged={categories.reload} />}
+      {/* Só a aba ativa é montada; cada visão renderiza um único bloco, então o painel não altera o espaçamento. */}
+      <div role="tabpanel" id={panelId(tab)} aria-labelledby={tabId(tab)}>
+        {(tab === "quadro" || tab === "lista" || tab === "cronograma") && tasks.error && (
+          <ErrorState what="as tarefas do projeto" detail={tasks.error} onRetry={tasks.reload} />
+        )}
+        {tab === "quadro" && tasks.loading && <BoardSkeleton />}
+        {tab === "lista" && tasks.loading && <SkeletonList count={6} label="Carregando a lista…" />}
+        {tab === "cronograma" && tasks.loading && <SkeletonList count={6} label="Carregando o cronograma…" />}
+        {tab === "quadro" && !tasks.loading && !tasks.error && (
+          <Kanban
+            projectId={id}
+            tasks={tasks.data ?? []}
+            categories={categories.data ?? []}
+            people={people.data ?? []}
+            canCreate={!profile.is_external}
+            canManageScopes={canManageScopes}
+            onOpen={setOpenId}
+            onChanged={tasks.reload}
+          />
+        )}
+        {tab === "lista" && !tasks.loading && !tasks.error && (
+          <TaskList tasks={tasks.data ?? []} categories={categories.data ?? []} people={people.data ?? []} onOpen={setOpenId} />
+        )}
+        {tab === "cronograma" && !tasks.loading && !tasks.error && <GanttChart rows={ganttRows} onSelect={setOpenId} />}
+        {tab === "documentos" && <DocumentIndex projectId={id} />}
+        {tab === "contexto" && <ContextPanel projectId={id} isManager={isManager} />}
+        {tab === "membros" && <MembersPanel projectId={id} managerId={p.manager_id} canManage={isManager} onChanged={people.reload} />}
+        {tab === "escopos" && <CategoriesPanel projectId={id} categories={categories.data ?? []} canManage={canManageScopes} onChanged={categories.reload} />}
+      </div>
 
       {activeTaskId && (
         <TaskPanel
