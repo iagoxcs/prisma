@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { PrismaWordmark } from "@/components/brand/prisma-mark";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { AuthCard } from "@/components/auth-card";
 import { getSupabase } from "@/lib/supabase/client";
 import { ORG_NAME } from "@/lib/settings";
 import { MSG_ERROR } from "@/lib/ui";
@@ -31,30 +31,26 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center p-4">
-      <div className="absolute top-3 right-3 md:top-5 md:right-5">
-        <ThemeToggle />
-      </div>
-      <main className="glass-lamina w-full max-w-sm space-y-7 p-7">
-        <div className="space-y-2">
-          <PrismaWordmark />
-          <p className="text-sm text-muted-foreground">Gerenciador de Projetos da {ORG_NAME}</p>
+    <AuthCard subtitle={`Gerenciador de Projetos da ${ORG_NAME}`}>
+      <form onSubmit={onSubmit} className="space-y-4">
+        <div className="space-y-1.5">
+          <Label htmlFor="email">E-mail</Label>
+          <Input id="email" type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} />
         </div>
-        <form onSubmit={onSubmit} className="space-y-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="email">E-mail</Label>
-            <Input id="email" type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} />
-          </div>
-          <div className="space-y-1.5">
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between gap-3">
             <Label htmlFor="password">Senha</Label>
-            <Input id="password" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+            <Link href="/recuperar-senha/" className="text-[0.8125rem] text-muted-foreground hover:text-foreground hover:underline">
+              Esqueci a senha
+            </Link>
           </div>
-          {error && <p role="alert" className={MSG_ERROR}>{error}</p>}
-          <Button type="submit" className="w-full" disabled={busy}>
-            {busy ? "Entrando…" : "Entrar"}
-          </Button>
-        </form>
-      </main>
-    </div>
+          <Input id="password" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+        </div>
+        {error && <p role="alert" className={MSG_ERROR}>{error}</p>}
+        <Button type="submit" className="w-full" disabled={busy}>
+          {busy ? "Entrando…" : "Entrar"}
+        </Button>
+      </form>
+    </AuthCard>
   );
 }

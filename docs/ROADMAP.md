@@ -32,6 +32,7 @@ Legenda: ✅ feito · 🟡 parcial · ⬜ pendente
 - ✅ Edição de status e período do projeto (gerente/admin)
 - ✅ Central de notificações: sino com contador em tempo real, lista rápida, página `/notificacoes/`, lida/não lida, excluir
 - ✅ Gatilhos: atribuição, novo comentário, prazo próximo (hoje/amanhã) e prazo vencido via `pg_cron` diário às 08:00 de Brasília
+- ✅ Alertas de prazo também por e-mail (Resend): resumo por pessoa às 08:05, Edge Function `deadline-emails` chamada pelo `pg_cron`; liga/desliga em Parâmetros
 - ⬜ Menções (@) em comentários
 - ⬜ Arrastar barras do Gantt para alterar datas
 
@@ -39,6 +40,8 @@ Legenda: ✅ feito · 🟡 parcial · ⬜ pendente
 - ✅ `/configuracoes/` com 4 abas: **Parâmetros**, **Usuários**, **Perfis e permissões**, **Auditoria**
 - ✅ Parâmetros (tabela `app_settings`, validados no banco, alteração auditada): nome da organização, antecedência do alerta de prazo, liga/desliga alertas de prazo próximo e vencido, escopos padrão de novos projetos. Fixos por requisito (somente exibidos): anexo 20 MB, fuso, senha mínima
 - ✅ Usuários: busca e filtros, e-mail e último acesso, criar, editar nome/cargo, perfil, ativar/desativar, redefinir senha; o sistema nunca fica sem admin ativo
+- ✅ "Esqueci a senha" no login: link por e-mail (Supabase Auth com SMTP do Resend) e tela `/redefinir-senha/`
+- ⬜ Convite por e-mail na criação de usuário e "redefinir senha" do admin por link (hoje o admin define a senha)
 - ✅ Matriz de perfis e permissões (somente leitura, espelha o RLS)
 - ✅ Auditoria: trilha de `activity_log` (projetos, tarefas, membros, parâmetros) com filtro
 - ⬜ Parâmetros futuros conforme as fases 4–5 (IA, metas de indicadores)

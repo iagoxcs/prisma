@@ -28,6 +28,7 @@ function GeneralForm({ settings, lastUpdate, onSaved }: { settings: AppSettings;
   const [days, setDays] = useState(String(settings.deadline_warning_days));
   const [soon, setSoon] = useState(settings.notify_due_soon);
   const [overdue, setOverdue] = useState(settings.notify_overdue);
+  const [byEmail, setByEmail] = useState(settings.email_deadline_alerts);
   const [cats, setCats] = useState(settings.default_categories.join("\n"));
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -40,6 +41,7 @@ function GeneralForm({ settings, lastUpdate, onSaved }: { settings: AppSettings;
       deadline_warning_days: Number(days),
       notify_due_soon: soon,
       notify_overdue: overdue,
+      email_deadline_alerts: byEmail,
       default_categories: [...new Set(cats.split("\n").map((c) => c.trim()).filter(Boolean))],
     };
     const supabase = getSupabase();
@@ -92,6 +94,12 @@ function GeneralForm({ settings, lastUpdate, onSaved }: { settings: AppSettings;
         <label className="flex min-h-11 items-center gap-2 text-sm">
           <input type="checkbox" className="size-4 accent-primary" checked={overdue} onChange={(e) => setOverdue(e.target.checked)} /> Avisar o responsável quando o prazo vencer
         </label>
+        <div className="space-y-1">
+          <label className="flex min-h-11 items-center gap-2 text-sm">
+            <input type="checkbox" className="size-4 accent-primary" checked={byEmail} disabled={!soon && !overdue} onChange={(e) => setByEmail(e.target.checked)} /> Também enviar os alertas por e-mail
+          </label>
+          <p className="text-[0.8125rem] text-muted-foreground">Um resumo por pessoa às <span className="num">08:05</span>, além do aviso no sino.</p>
+        </div>
       </section>
 
       <section className="glass-coluna space-y-3 p-5">
