@@ -1,6 +1,7 @@
 name: Deploy produção
 
-# Todo merge em main publica: 1) migrações e Edge Functions no Supabase; 2) site estático no Netlify.
+# Todo merge em main publica: 1) migrações e Edge Functions no Supabase;
+# 2) site estático na KingHost, em https://prisma.ambienteconsulta.com.br.
 # O site só sobe se o Supabase atualizar sem erro (o front novo pode depender do schema novo).
 # Secrets ficam no environment "production" (GitHub → Settings → Environments). Ver docs/DEPLOY.md.
 on:
@@ -12,6 +13,9 @@ on:
 concurrency:
   group: deploy-production
   cancel-in-progress: false
+
+env:
+  SITE_URL: https://prisma.ambienteconsulta.com.br
 
 jobs:
   supabase:
@@ -40,10 +44,12 @@ jobs:
         run: supabase functions deploy --project-ref "$SUPABASE_PROJECT_REF" --use-api
 
   site:
-    name: Site (Netlify)
+    name: Site (KingHost)
     needs: supabase
     runs-on: ubuntu-latest
-    environment: production
+    environment:
+      name: production
+      url: ${{ env.SITE_URL }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -68,15 +74,51 @@ jobs:
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-      # Envia o ./out já compilado acima; --no-build impede o Netlify de compilar de novo
-      # (o build de lá não teria as variáveis NEXT_PUBLIC_*).
-      - name: Publicar ./out no Netlify
-        env:
-          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+      # Marca a versão publicada; o último passo confere que o domínio já serve este commit.
+      - name: Gravar versão
         run: |
-          if [ -z "$NETLIFY_AUTH_TOKEN" ] || [ -z "$NETLIFY_SITE_ID" ]; then
-            echo "::error::Secrets NETLIFY_AUTH_TOKEN e NETLIFY_SITE_ID são obrigatórios"; exit 1
-          fi
-          npx --yes netlify-cli@27 deploy --prod --no-build --dir=out \
-            --site="$NETLIFY_SITE_ID" --message "${GITHUB_SHA::7}"
+          test -f out/.htaccess || { echo "::error::out/.htaccess não foi gerado (public/.htaccess)"; exit 1; }
+          echo "$GITHUB_SHA" > out/version.txt
+      # A ação de FTP exige pasta terminada em "/": normaliza o secret e recusa valor vazio
+      # (pasta vazia publicaria na raiz da conta FTP, por cima de outros sites).
+      - name: Pasta de destino
+        id: ftpdir
+        env:
+          DIR: ${{ secrets.KINGHOST_FTP_DIR }}
+        run: |
+          if [ -z "$DIR" ] || [ "$DIR" = "/" ]; then echo "::error::Secret KINGHOST_FTP_DIR vazio ou igual a /"; exit 1; fi
+          echo "dir=${DIR%/}/" >> "$GITHUB_OUTPUT"
+      # Diagnóstico (só com a variável FTP_LOG_LEVEL=verbose): lista a raiz da conta FTP e a pasta de destino.
+      - name: Listar pastas no FTP (diagnóstico)
+        if: vars.FTP_LOG_LEVEL == 'verbose'
+        continue-on-error: true
+        env:
+          FTP_HOST: ${{ secrets.KINGHOST_FTP_HOST }}
+          FTP_USER: ${{ secrets.KINGHOST_FTP_USER }}
+          FTP_PASS: ${{ secrets.KINGHOST_FTP_PASSWORD }}
+          DIR: ${{ steps.ftpdir.outputs.dir }}
+        run: |
+          echo "== raiz da conta"; curl -sSk --ssl-reqd --list-only --user "$FTP_USER:$FTP_PASS" "ftp://$FTP_HOST/" || true
+          echo "== pasta de destino"; curl -sSk --ssl-reqd --list-only --user "$FTP_USER:$FTP_PASS" "ftp://$FTP_HOST/$DIR" || true
+      # Envio incremental: só arquivos alterados; o estado fica em .ftp-deploy-sync-state.json
+      # (bloqueado para download pelo .htaccess).
+      - name: Enviar ./out por FTPS
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.KINGHOST_FTP_HOST }}
+          username: ${{ secrets.KINGHOST_FTP_USER }}
+          password: ${{ secrets.KINGHOST_FTP_PASSWORD }}
+          protocol: ftps
+          local-dir: ./out/
+          server-dir: ${{ steps.ftpdir.outputs.dir }}   # ex.: /www/prisma/ (conferir no painel da KingHost)
+          log-level: ${{ vars.FTP_LOG_LEVEL || 'standard' }}
+      - name: Conferir o site no ar
+        run: |
+          for i in 1 2 3 4 5 6; do
+            got=$(curl -fsS --max-time 15 "$SITE_URL/version.txt?t=$(date +%s)" || true)
+            if [ "$got" = "$GITHUB_SHA" ]; then echo "Site no ar com ${GITHUB_SHA::7}."; break; fi
+            echo "Aguardando o domínio servir a versão nova ($i/6)..."; sleep 10
+          done
+          [ "$got" = "$GITHUB_SHA" ] || { echo "::error::$SITE_URL não serve a versão publicada. Confira KINGHOST_FTP_DIR (pasta do subdomínio)."; exit 1; }
+          curl -fsSI --max-time 15 "$SITE_URL/projetos/" | grep -qi '^x-frame-options: *DENY' \
+            || echo "::warning::Cabeçalhos de segurança não aplicados: o .htaccess pode não estar ativo."

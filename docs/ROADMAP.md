@@ -7,7 +7,7 @@ Legenda: ✅ feito · 🟡 parcial · ⬜ pendente
 - ✅ Schema completo com RLS (fases 1–4) aplicado no Supabase (projeto `jipaumhvkldxnmwfdmji`) e versionado em `supabase/migrations`
 - ✅ Advisors de segurança/performance tratados (restam apenas avisos esperados: helpers de RLS executáveis por `authenticated`)
 - ✅ Teste de fumaça de RLS executado no banco (gerente/consultor/externo/não-membro/anon)
-- ✅ CI (lint, typecheck, build) e workflow de deploy (Supabase + Netlify)
+- ✅ CI (lint, typecheck, build) e workflow de deploy (Supabase + KingHost)
 - ⬜ Criar o primeiro admin (ver `DEPLOY.md`)
 - ⬜ Testes automatizados de RLS (pgTAP) e de front (Vitest) — exigidos por RNF-08
 - ⬜ Separar projetos Supabase dev/prod (hoje há um só)
