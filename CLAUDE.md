@@ -31,8 +31,7 @@ Next.js (App Router) + TypeScript + Tailwind + shadcn/ui · Supabase (Auth, Post
 - Papéis: `admin`, `gerente`, `lider`, `consultor`, `externo` (matriz em `docs/ARQUITETURA.md`).
 - Datas/horas: `timestamptz` no banco; exibir em America/Sao_Paulo.
 - Há um único projeto Supabase e ele é produção: proibido `apply_migration` pelo MCP; migrações chegam ao banco só pelo workflow de deploy (`supabase db push`) após merge em `main`.
-- Supabase MCP só no projeto **dev**, de preferência read-only. Plan mode para schema, permissões e ai-gateway.
-- Migração aplicada pelo MCP (`apply_migration`) é registrada com o horário da aplicação: renomeie o arquivo em `supabase/migrations/` para a versão que `list_migrations` mostrar, para o histórico local e o remoto baterem (evita conflito no `supabase db push`).
+- Supabase MCP só para leitura (consultas, logs, advisors, `list_migrations`) no projeto de produção. Plan mode para schema, permissões e ai-gateway.
 
 ## Comandos
 ```
