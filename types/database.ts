@@ -247,6 +247,139 @@ export type Database = {
           },
         ]
       }
+      knowledge_files: {
+        Row: {
+          created_at: string
+          file_name: string
+          id: string
+          item_id: string
+          mime_type: string | null
+          size_bytes: number
+          storage_path: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          file_name: string
+          id?: string
+          item_id: string
+          mime_type?: string | null
+          size_bytes: number
+          storage_path: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          file_name?: string
+          id?: string
+          item_id?: string
+          mime_type?: string | null
+          size_bytes?: number
+          storage_path?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "knowledge_files_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "knowledge_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "knowledge_files_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      knowledge_items: {
+        Row: {
+          body: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          kind: string
+          methodology_id: string | null
+          prisma_stage: string | null
+          search: unknown
+          source_file_name: string | null
+          status: string
+          summary: string | null
+          tags: string[]
+          template_csv: string | null
+          template_file_name: string | null
+          title: string
+          updated_at: string
+          updated_by: string | null
+          version: number
+        }
+        Insert: {
+          body?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          kind: string
+          methodology_id?: string | null
+          prisma_stage?: string | null
+          search?: never
+          source_file_name?: string | null
+          status?: string
+          summary?: string | null
+          tags?: string[]
+          template_csv?: string | null
+          template_file_name?: string | null
+          title: string
+          updated_at?: string
+          updated_by?: string | null
+          version?: number
+        }
+        Update: {
+          body?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          kind?: string
+          methodology_id?: string | null
+          prisma_stage?: string | null
+          search?: never
+          source_file_name?: string | null
+          status?: string
+          summary?: string | null
+          tags?: string[]
+          template_csv?: string | null
+          template_file_name?: string | null
+          title?: string
+          updated_at?: string
+          updated_by?: string | null
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "knowledge_items_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "knowledge_items_methodology_id_fkey"
+            columns: ["methodology_id"]
+            isOneToOne: false
+            referencedRelation: "knowledge_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "knowledge_items_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notifications: {
         Row: {
           created_at: string
@@ -323,6 +456,66 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      project_context_entries: {
+        Row: {
+          body: string
+          created_at: string
+          created_by: string | null
+          id: string
+          kind: string
+          meeting_date: string | null
+          participants: string | null
+          project_id: string
+          search: unknown
+          source_file_name: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          kind: string
+          meeting_date?: string | null
+          participants?: string | null
+          project_id: string
+          search?: never
+          source_file_name?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          kind?: string
+          meeting_date?: string | null
+          participants?: string | null
+          project_id?: string
+          search?: never
+          source_file_name?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_context_entries_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_context_entries_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       project_members: {
         Row: {
@@ -667,7 +860,63 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      project_documents: {
+        Row: {
+          category_id: string | null
+          category_name: string | null
+          client_id: string | null
+          client_name: string | null
+          created_at: string | null
+          file_name: string | null
+          id: string | null
+          mime_type: string | null
+          project_id: string | null
+          project_name: string | null
+          size_bytes: number | null
+          storage_path: string | null
+          task_id: string | null
+          task_title: string | null
+          uploaded_by: string | null
+          uploader_name: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_attachments_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_attachments_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "projects_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       admin_update_profile: {
@@ -685,6 +934,7 @@ export type Database = {
       attachment_task_id: { Args: { object_name: string }; Returns: string }
       can_create_in_project: { Args: { pid: string }; Returns: boolean }
       can_edit_task: { Args: { tid: string }; Returns: boolean }
+      can_manage_knowledge: { Args: never; Returns: boolean }
       can_see_task: { Args: { tid: string }; Returns: boolean }
       category_palette: { Args: never; Returns: string[] }
       current_user_role: {
@@ -700,6 +950,7 @@ export type Database = {
       is_internal: { Args: never; Returns: boolean }
       is_project_manager: { Args: { pid: string }; Returns: boolean }
       is_project_member: { Args: { pid: string }; Returns: boolean }
+      knowledge_item_id: { Args: { object_name: string }; Returns: string }
       shares_project_with: { Args: { other: string }; Returns: boolean }
     }
     Enums: {

@@ -4,10 +4,13 @@ import Link from "next/link";
 import { Suspense, useEffect, useMemo, useState, type FormEvent } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/components/auth-provider";
+import { DocumentIndex } from "@/components/documents/document-index";
 import { GanttChart, type GanttRow } from "@/components/gantt-chart";
 import { CategoriesPanel } from "@/components/project/categories-panel";
+import { ContextPanel } from "@/components/project/context-panel";
 import { Kanban } from "@/components/project/kanban";
 import { MembersPanel } from "@/components/project/members-panel";
+import { TaskList } from "@/components/project/task-list";
 import { TaskPanel } from "@/components/project/task-panel";
 import { ArrowLeft, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -22,17 +25,22 @@ import { useQuery } from "@/lib/use-query";
 import { cn } from "@/lib/utils";
 import { PROJECT_STATUS_LABEL, todayISO, type Category, type Person, type Project, type ProjectStatus, type Task } from "@/types/domain";
 
-type Tab = "quadro" | "cronograma" | "membros" | "escopos";
+type Tab = "quadro" | "lista" | "cronograma" | "documentos" | "contexto" | "membros" | "escopos";
 const TABS: { id: Tab; label: string }[] = [
   { id: "quadro", label: "Quadro" },
+  { id: "lista", label: "Lista" },
   { id: "cronograma", label: "Cronograma" },
+  { id: "documentos", label: "Documentos" },
+  { id: "contexto", label: "Contexto" },
   { id: "membros", label: "Membros" },
   { id: "escopos", label: "Escopos" },
 ];
 const DEFAULT_TAB: Tab = "quadro";
 const TASK_COLS = "id, project_id, category_id, title, description, status, assignee_id, start_date, due_date, position";
 
-const tabsFor = (isExternal: boolean) => TABS.filter((t) => !(isExternal && t.id === "escopos"));
+// Contexto e Escopos são só da equipe interna.
+const INTERNAL_TABS: Tab[] = ["contexto", "escopos"];
+const tabsFor = (isExternal: boolean) => TABS.filter((t) => !(isExternal && INTERNAL_TABS.includes(t.id)));
 
 // Rota por query string (?id=&task=&tab=) porque o site é exportado estaticamente.
 function ProjetoDetalhe() {
@@ -56,7 +64,7 @@ function ProjetoDetalhe() {
     router.replace(`${pathname}?${q.toString()}`, { scroll: false });
   };
 
-  // Aba inválida (ou Escopos para externo): a URL cai no padrão. Só decide com o perfil carregado.
+  // Aba inválida (ou Contexto/Escopos para externo): a URL cai no padrão. Só decide com o perfil carregado.
   useEffect(() => {
     if (profile && rawTab !== null && rawTab !== tab) setTab(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -94,7 +102,7 @@ function ProjetoDetalhe() {
     return { data: list.sort((a, b) => a.name.localeCompare(b.name)), error };
   }, [id, project.data?.manager_id]);
 
-  // Tempo real: mudanças em tarefas do projeto atualizam Quadro e Cronograma.
+  // Tempo real: mudanças em tarefas do projeto atualizam Quadro, Lista e Cronograma.
   const reloadTasks = tasks.reload;
   useEffect(() => {
     if (!id) return;
@@ -167,18 +175,20 @@ function ProjetoDetalhe() {
         </div>
       )}
 
-      <div role="tablist" aria-label="Visões do projeto" className={SEGMENTED}>
+      {/* Em telas estreitas as abas rolam na horizontal em vez de quebrar linha. */}
+      <div role="tablist" aria-label="Visões do projeto" className={cn(SEGMENTED, "max-w-full flex-nowrap overflow-x-auto")}>
         {allowedTabs.map((t) => (
-          <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)} className={SEGMENT_ITEM}>
+          <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)} className={cn(SEGMENT_ITEM, "shrink-0 whitespace-nowrap")}>
             {t.label}
           </button>
         ))}
       </div>
 
-      {(tab === "quadro" || tab === "cronograma") && tasks.error && (
+      {(tab === "quadro" || tab === "lista" || tab === "cronograma") && tasks.error && (
         <ErrorState what="as tarefas do projeto" detail={tasks.error} onRetry={tasks.reload} />
       )}
       {tab === "quadro" && tasks.loading && <BoardSkeleton />}
+      {tab === "lista" && tasks.loading && <SkeletonList count={6} label="Carregando a lista…" />}
       {tab === "cronograma" && tasks.loading && <SkeletonList count={6} label="Carregando o cronograma…" />}
       {tab === "quadro" && !tasks.loading && !tasks.error && (
         <Kanban
@@ -192,7 +202,12 @@ function ProjetoDetalhe() {
           onChanged={tasks.reload}
         />
       )}
+      {tab === "lista" && !tasks.loading && !tasks.error && (
+        <TaskList tasks={tasks.data ?? []} categories={categories.data ?? []} people={people.data ?? []} onOpen={setOpenId} />
+      )}
       {tab === "cronograma" && !tasks.loading && !tasks.error && <GanttChart rows={ganttRows} onSelect={setOpenId} />}
+      {tab === "documentos" && <DocumentIndex projectId={id} />}
+      {tab === "contexto" && <ContextPanel projectId={id} isManager={isManager} />}
       {tab === "membros" && <MembersPanel projectId={id} managerId={p.manager_id} canManage={isManager} onChanged={people.reload} />}
       {tab === "escopos" && <CategoriesPanel projectId={id} categories={categories.data ?? []} canManage={canManageScopes} onChanged={categories.reload} />}
 

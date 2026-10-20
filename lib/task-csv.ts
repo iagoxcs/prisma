@@ -268,3 +268,32 @@ export function templateCsv(): string {
   ].join(";");
   return `﻿${header}\r\n${example}\r\n`;
 }
+
+// CSV do Excel em pt-BR costuma vir em Windows-1252; se o UTF-8 trouxer caracteres inválidos, relê nessa codificação.
+export async function readCsvFile(file: File): Promise<string> {
+  const buffer = await file.arrayBuffer();
+  const utf8 = new TextDecoder("utf-8").decode(buffer);
+  return utf8.includes("�") ? new TextDecoder("windows-1252").decode(buffer) : utf8;
+}
+
+export interface TemplatePhases {
+  phases: { name: string; tasks: number }[];
+  tasks: number;
+  errors: string[];
+}
+
+// Planilha de modelo de projeto (Base de Conhecimento): mesmo formato da importação, com a coluna
+// Escopo obrigatória, porque cada escopo é uma fase do modelo. Devolve as fases na ordem do arquivo.
+export function templatePhases(text: string): TemplatePhases {
+  const preview = buildPreview(text, [], []);
+  const errors: string[] = [];
+  const counts = new Map<string, number>();
+  let withoutPhase = 0;
+  for (const t of preview.tasks) {
+    if (!t.new_category) withoutPhase++;
+    else counts.set(t.new_category, (counts.get(t.new_category) ?? 0) + 1);
+  }
+  if (preview.tasks.length === 0) errors.push("A planilha não tem nenhuma tarefa com Título.");
+  if (withoutPhase > 0) errors.push(`${withoutPhase} tarefa(s) sem Escopo. Cada tarefa precisa indicar a fase na coluna ${TEMPLATE_HEADERS.category}.`);
+  return { phases: [...counts].map(([name, tasks]) => ({ name, tasks })), tasks: preview.tasks.length, errors };
+}
