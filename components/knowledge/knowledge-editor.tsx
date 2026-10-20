@@ -12,7 +12,7 @@ import { readCsvFile, templateCsv, templatePhases } from "@/lib/task-csv";
 import { MSG_ERROR, SELECT_CLASS, TEXTAREA_CLASS } from "@/lib/ui";
 import { useQuery } from "@/lib/use-query";
 import { cn } from "@/lib/utils";
-import { KNOWLEDGE_KIND_LABEL, PRISMA_STAGE_LABEL, type KnowledgeItem, type KnowledgeStatus, type PrismaStage } from "@/types/domain";
+import { KNOWLEDGE_KIND_LABEL, type KnowledgeItem, type KnowledgeStatus } from "@/types/domain";
 
 const NO_PERMISSION = "Você não tem permissão para editar este item.";
 const LABEL = "block text-[0.8125rem] font-medium text-muted-foreground";
@@ -39,7 +39,6 @@ export function KnowledgeEditor({
   const isModel = item.kind === "modelo";
   const [title, setTitle] = useState(item.title);
   const [methodology, setMethodology] = useState(item.methodology_id ?? "");
-  const [stage, setStage] = useState<PrismaStage | "">(item.prisma_stage ?? "");
   const [tags, setTags] = useState(item.tags.join(", "));
   const [summary, setSummary] = useState(item.summary ?? "");
   const [body, setBody] = useState(item.body ?? "");
@@ -110,7 +109,6 @@ export function KnowledgeEditor({
 
   const fields = () => ({
     title: title.trim(),
-    prisma_stage: stage || null,
     tags: parseTags(tags),
     summary: summary.trim() || null,
     body: body || null,
@@ -170,15 +168,6 @@ export function KnowledgeEditor({
             </select>
           </label>
         )}
-        <label className="space-y-1.5">
-          <span className={LABEL}>Etapa PRISMA</span>
-          <select className={SELECT_CLASS} value={stage} onChange={(e) => setStage(e.target.value as PrismaStage | "")}>
-            <option value="">Sem etapa</option>
-            {(Object.keys(PRISMA_STAGE_LABEL) as PrismaStage[]).map((s) => (
-              <option key={s} value={s}>{PRISMA_STAGE_LABEL[s]}</option>
-            ))}
-          </select>
-        </label>
         <label className="min-w-64 flex-1 space-y-1.5">
           <span className={LABEL}>Tags (separadas por vírgula)</span>
           <Input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="bpm, mapeamento" />

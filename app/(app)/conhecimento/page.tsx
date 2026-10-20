@@ -18,17 +18,15 @@ import { useQuery } from "@/lib/use-query";
 import {
   KNOWLEDGE_KIND_LABEL,
   KNOWLEDGE_STATUS_LABEL,
-  PRISMA_STAGE_LABEL,
   type KnowledgeItem,
   type KnowledgeKind,
   type KnowledgeStatus,
-  type PrismaStage,
 } from "@/types/domain";
 
-type Card = Pick<KnowledgeItem, "id" | "title" | "kind" | "prisma_stage" | "tags" | "summary" | "status" | "updated_at"> & {
+type Card = Pick<KnowledgeItem, "id" | "title" | "kind" | "tags" | "summary" | "status" | "updated_at"> & {
   methodology: { title: string } | null;
 };
-const COLS = "id, title, kind, prisma_stage, tags, summary, status, updated_at, methodology:methodology_id(title)";
+const COLS = "id, title, kind, tags, summary, status, updated_at, methodology:methodology_id(title)";
 
 export default function ConhecimentoPage() {
   const { profile } = useAuth();
@@ -40,7 +38,6 @@ export default function ConhecimentoPage() {
   const [tagInput, setTagInput] = useState("");
   const [tag, setTag] = useState("");
   const [kind, setKind] = useState<KnowledgeKind | "">("");
-  const [stage, setStage] = useState<PrismaStage | "">("");
   const [status, setStatus] = useState<KnowledgeStatus | "">("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = usePageSize("knowledge");
@@ -58,15 +55,14 @@ export default function ConhecimentoPage() {
     let q = getSupabase().from("knowledge_items").select(COLS, { count: "exact" });
     if (term) q = q.textSearch("search", term, { type: "websearch", config: "portuguese" });
     if (kind) q = q.eq("kind", kind);
-    if (stage) q = q.eq("prisma_stage", stage);
     if (tag) q = q.contains("tags", [tag]);
     if (canManage && status) q = q.eq("status", status);
     const start = (page - 1) * pageSize;
     const r = await q.order("updated_at", { ascending: false }).range(start, start + pageSize - 1);
     return { data: { rows: (r.data ?? []) as unknown as Card[], total: r.count ?? 0 }, error: r.error };
-  }, [term, kind, stage, tag, status, canManage, page, pageSize]);
+  }, [term, kind, tag, status, canManage, page, pageSize]);
 
-  const filtered = !!(term || kind || stage || tag || status);
+  const filtered = !!(term || kind || tag || status);
   const rows = list.data?.rows ?? [];
   const total = list.data?.total ?? 0;
   const filter = <T,>(set: (v: T) => void) => (v: T) => {
@@ -97,12 +93,6 @@ export default function ConhecimentoPage() {
           <option value="">Todos os tipos</option>
           {(Object.keys(KNOWLEDGE_KIND_LABEL) as KnowledgeKind[]).map((k) => (
             <option key={k} value={k}>{KNOWLEDGE_KIND_LABEL[k]}</option>
-          ))}
-        </select>
-        <select aria-label="Filtrar por etapa PRISMA" className={SELECT_CLASS} value={stage} onChange={(e) => filter(setStage)(e.target.value as PrismaStage | "")}>
-          <option value="">Todas as etapas</option>
-          {(Object.keys(PRISMA_STAGE_LABEL) as PrismaStage[]).map((s) => (
-            <option key={s} value={s}>{PRISMA_STAGE_LABEL[s]}</option>
           ))}
         </select>
         <Input
@@ -143,7 +133,6 @@ export default function ConhecimentoPage() {
               >
                 <span className="flex flex-wrap items-center gap-x-2 text-[0.8125rem] font-semibold text-brand-mid">
                   {KNOWLEDGE_KIND_LABEL[i.kind]}
-                  {i.prisma_stage && <span>· {PRISMA_STAGE_LABEL[i.prisma_stage]}</span>}
                   {i.status === "rascunho" && <Badge variant="outline" className="ml-auto">Rascunho</Badge>}
                 </span>
                 <span className="text-[0.9375rem] font-medium text-foreground">{i.title}</span>
