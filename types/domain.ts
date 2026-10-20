@@ -257,3 +257,50 @@ export interface ProjectContextEntry {
   created_at: string;
   updated_at: string;
 }
+
+// Indicadores de projeto (REQUISITOS §9): views security_invoker, só leitura. Externo recebe 0 linhas.
+// Só ids; nomes vêm de projects, categories e profiles. Datas em America/Sao_Paulo.
+// category_id nulo = "sem escopo"; assignee_id nulo = "sem responsável".
+export interface ProjectProgress {
+  project_id: string;
+  total: number;
+  done: number;
+  open: number;
+  overdue: number;
+  completion_pct: number | null; // nulo em projeto sem tarefas
+}
+
+export interface TaskThroughputWeekly {
+  project_id: string;
+  week_start: string; // segunda-feira, YYYY-MM-DD
+  done_count: number;
+}
+
+export interface TaskLeadTime {
+  project_id: string;
+  category_id: string | null;
+  tasks_done: number;
+  avg_days: number; // dias entre created_at e concluded_at
+}
+
+export interface DeadlineAdherence {
+  project_id: string;
+  assignee_id: string | null;
+  done_total: number; // concluídas com due_date
+  done_on_time: number;
+}
+
+// Parcial para quem não é admin: conta só as tarefas dos projetos visíveis ao usuário.
+export interface WorkloadByAssignee {
+  assignee_id: string | null;
+  project_id: string;
+  open_count: number;
+  overdue_count: number;
+}
+
+export interface ScopeDistribution {
+  project_id: string;
+  category_id: string | null;
+  status: TaskStatus;
+  task_count: number;
+}
