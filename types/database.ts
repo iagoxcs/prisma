@@ -324,7 +324,7 @@ export type Database = {
           kind: string
           methodology_id?: string | null
           prisma_stage?: string | null
-          search?: never
+          search?: unknown
           source_file_name?: string | null
           status?: string
           summary?: string | null
@@ -344,7 +344,7 @@ export type Database = {
           kind?: string
           methodology_id?: string | null
           prisma_stage?: string | null
-          search?: never
+          search?: unknown
           source_file_name?: string | null
           status?: string
           summary?: string | null
@@ -481,7 +481,7 @@ export type Database = {
           meeting_date?: string | null
           participants?: string | null
           project_id: string
-          search?: never
+          search?: unknown
           source_file_name?: string | null
           title: string
           updated_at?: string
@@ -495,7 +495,7 @@ export type Database = {
           meeting_date?: string | null
           participants?: string | null
           project_id?: string
-          search?: never
+          search?: unknown
           source_file_name?: string | null
           title?: string
           updated_at?: string
@@ -881,6 +881,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "projects_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "task_attachments_task_id_fkey"
             columns: ["task_id"]
             isOneToOne: false
@@ -906,13 +913,6 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "projects_client_id_fkey"
-            columns: ["client_id"]
-            isOneToOne: false
-            referencedRelation: "clients"
             referencedColumns: ["id"]
           },
         ]
