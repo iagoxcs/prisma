@@ -19,14 +19,16 @@ import {
 } from "@dnd-kit/core";
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { CalendarDays, GripVertical, Upload } from "lucide-react";
+import { CalendarDays, GripVertical, Plus, Upload } from "lucide-react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useAuth } from "@/components/auth-provider";
 import { TaskImport } from "@/components/project/task-import";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { initials, shortDate } from "@/lib/format";
 import { getSupabase } from "@/lib/supabase/client";
 import { categoryColor, OVERDUE_BADGE, TASK_STATUS_DOT } from "@/lib/theme/status";
-import { MSG_ERROR, SELECT_CLASS } from "@/lib/ui";
+import { MSG_ERROR, SEGMENT_ITEM, SELECT_CLASS } from "@/lib/ui";
 import { cn } from "@/lib/utils";
 import { TASK_STATUS_LABEL, todayISO, type Category, type Person, type Task, type TaskStatus } from "@/types/domain";
 import { Select } from "@/components/ui/select";
@@ -116,8 +118,6 @@ export function Kanban({
   const [title, setTitle] = useState("");
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [filterAssignee, setFilterAssignee] = useState("");
-  const [filterCategory, setFilterCategory] = useState("");
   const [override, setOverride] = useState<Override | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [order, setOrder] = useState<Order | null>(null);
@@ -125,6 +125,10 @@ export function Kanban({
   const endMsgRef = useRef<string | null>(null);
   const tasksRef = useRef(tasks);
   const reducedMotion = useReducedMotion();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const { profile } = useAuth();
 
   useEffect(() => {
     tasksRef.current = tasks;
@@ -134,16 +138,43 @@ export function Kanban({
   const category = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
   const today = todayISO();
 
+  // Filtros vivem na URL (?assignee=, ?scope=, ?mine=1, ?overdue=1); valores inválidos são ignorados.
+  const paramAssignee = searchParams.get("assignee") ?? "";
+  const paramScope = searchParams.get("scope") ?? "";
+  const filterAssignee = nameOf.has(paramAssignee) ? paramAssignee : "";
+  const filterCategory = category.has(paramScope) ? paramScope : "";
+  const filterMine = searchParams.get("mine") === "1" && !!profile;
+  const filterOverdue = searchParams.get("overdue") === "1";
+  const myId = profile?.id ?? "";
+  const filtering = !!filterAssignee || !!filterCategory || filterMine || filterOverdue;
+
+  const setParams = (patch: Record<string, string | null>) => {
+    const next = new URLSearchParams(searchParams.toString());
+    for (const [k, v] of Object.entries(patch)) {
+      if (v) next.set(k, v);
+      else next.delete(k);
+    }
+    const qs = next.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  };
+  const clearFilters = () => setParams({ assignee: null, scope: null, mine: null, overdue: null });
+
   const base = override && (activeId || override.saving || tasks === override.until) ? override.items : tasks;
   const byId = useMemo(() => new Map(base.map((t) => [t.id, t])), [base]);
-  const matches = (t: Task) => (!filterAssignee || t.assignee_id === filterAssignee) && (!filterCategory || t.category_id === filterCategory);
+  const matches = (t: Task) =>
+    (!filterAssignee || t.assignee_id === filterAssignee) &&
+    (!filterCategory || t.category_id === filterCategory) &&
+    (!filterMine || t.assignee_id === myId) &&
+    (!filterOverdue || (!!t.due_date && t.status !== "done" && t.due_date < today));
   const visibleOrder: Order = useMemo(() => {
     const o = { todo: [], doing: [], done: [] } as Order;
     for (const t of [...base].sort(byPosition)) if (matches(t)) o[t.status].push(t.id);
     return o;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [base, filterAssignee, filterCategory]);
+  }, [base, filterAssignee, filterCategory, filterMine, filterOverdue, myId, today]);
   const shown = order ?? visibleOrder;
+  const visibleCount = COLUMNS.reduce((n, c) => n + visibleOrder[c].length, 0);
+  const noResults = filtering && visibleCount === 0;
 
   const sensors = useSensors(
     useSensor(MousePointerSensor, { activationConstraint: { distance: 6 } }),
@@ -267,6 +298,24 @@ export function Kanban({
     onChanged();
   }
 
+  // Criação pelo rodapé da coluna: entra ao final e herda os filtros ativos, para continuar visível.
+  async function addToColumn(status: TaskStatus, text: string): Promise<string | null> {
+    const max = Math.max(0, ...tasks.filter((t) => t.status === status).map((t) => t.position));
+    const { error } = await getSupabase()
+      .from("tasks")
+      .insert({
+        project_id: projectId,
+        title: text,
+        status,
+        position: max + 1,
+        ...((filterAssignee || (filterMine && myId)) && { assignee_id: filterAssignee || myId }),
+        ...(filterCategory && { category_id: filterCategory }),
+      });
+    if (error) return error.message;
+    onChanged();
+    return null;
+  }
+
   const activeTask = activeId ? byId.get(activeId) : undefined;
   const card = { category, nameOf, today };
 
@@ -284,18 +333,34 @@ export function Kanban({
             <Upload strokeWidth={1.75} aria-hidden /> Importar CSV
           </Button>
         )}
-        <Select aria-label="Filtrar por responsável" className={SELECT_CLASS} value={filterAssignee} onChange={(e) => setFilterAssignee(e.target.value)}>
+        <Select aria-label="Filtrar por responsável" className={SELECT_CLASS} value={filterAssignee} onChange={(e) => setParams({ assignee: e.target.value || null })}>
           <option value="">Todos os responsáveis</option>
           {people.map((p) => (
             <option key={p.id} value={p.id}>{p.name}</option>
           ))}
         </Select>
-        <Select aria-label="Filtrar por escopo" className={SELECT_CLASS} value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)}>
+        <Select aria-label="Filtrar por escopo" className={SELECT_CLASS} value={filterCategory} onChange={(e) => setParams({ scope: e.target.value || null })}>
           <option value="">Todos os escopos</option>
           {categories.map((c) => (
             <option key={c.id} value={c.id}>{c.name}</option>
           ))}
         </Select>
+        {profile && (
+          <button type="button" aria-pressed={filterMine} className={SEGMENT_ITEM} onClick={() => setParams({ mine: filterMine ? null : "1" })}>
+            Minhas
+          </button>
+        )}
+        <button type="button" aria-pressed={filterOverdue} className={SEGMENT_ITEM} onClick={() => setParams({ overdue: filterOverdue ? null : "1" })}>
+          Atrasadas
+        </button>
+        {filtering && (
+          <Button type="button" variant="ghost" onClick={clearFilters}>
+            Limpar filtros
+          </Button>
+        )}
+        <p aria-live="polite" className="num ml-auto text-sm text-muted-foreground">
+          {visibleCount} de {base.length} tarefas
+        </p>
       </div>
       {error && <p role="alert" className={MSG_ERROR}>{error}</p>}
       {importing && (
@@ -325,7 +390,15 @@ export function Kanban({
         onDragEnd={onDragEnd}
         onDragCancel={onDragCancel}
       >
-        <div className="grid gap-4 lg:grid-cols-3">
+        {noResults && (
+          <div className="glass-coluna flex flex-col items-start gap-3 p-5">
+            <p className="text-sm text-muted-foreground">Nenhuma tarefa com esses filtros.</p>
+            <Button type="button" variant="outline" onClick={clearFilters}>
+              Limpar filtros
+            </Button>
+          </div>
+        )}
+        <div className={cn("grid gap-4 lg:grid-cols-3", noResults && "hidden")}>
           {COLUMNS.map((status) => (
             <Column key={status} status={status}>
               <h3 className="flex items-center gap-2 px-1 pb-1">
@@ -342,6 +415,7 @@ export function Kanban({
                 </ul>
               </SortableContext>
               {shown[status].length === 0 && <p className="px-1 text-[0.8125rem] text-muted-foreground">Nenhuma tarefa aqui.</p>}
+              {canCreate && <ColumnAdd status={status} onAdd={addToColumn} />}
             </Column>
           ))}
         </div>
@@ -359,6 +433,69 @@ function Column({ status, children }: { status: TaskStatus; children: ReactNode 
     <section ref={setNodeRef} aria-label={TASK_STATUS_LABEL[status]} className="glass-coluna flex min-h-40 flex-col gap-2.5 p-3.5">
       {children}
     </section>
+  );
+}
+
+// Rodapé da coluna: botão que vira campo. Enter cria, Esc cancela; nos dois casos o foco volta ao botão.
+function ColumnAdd({ status, onAdd }: { status: TaskStatus; onAdd: (status: TaskStatus, title: string) => Promise<string | null> }) {
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const restoreFocus = useRef(false);
+
+  useEffect(() => {
+    if (!open && restoreFocus.current) {
+      restoreFocus.current = false;
+      buttonRef.current?.focus();
+    }
+  }, [open]);
+
+  const close = () => {
+    restoreFocus.current = true;
+    setValue("");
+    setError(null);
+    setOpen(false);
+  };
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    const text = value.trim();
+    if (!text || busy) return;
+    setBusy(true);
+    setError(null);
+    const failure = await onAdd(status, text);
+    setBusy(false);
+    if (failure) return setError(failure);
+    close();
+  }
+
+  if (!open)
+    return (
+      <Button ref={buttonRef} type="button" variant="ghost" size="sm" className="justify-start text-muted-foreground" onClick={() => setOpen(true)}>
+        <Plus strokeWidth={1.75} aria-hidden /> Adicionar tarefa
+      </Button>
+    );
+
+  return (
+    <form onSubmit={submit} className="space-y-1.5">
+      <Input
+        autoFocus
+        aria-label={`Nova tarefa em ${TASK_STATUS_LABEL[status]}`}
+        placeholder="Título da tarefa"
+        value={value}
+        readOnly={busy}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            e.preventDefault();
+            close();
+          }
+        }}
+      />
+      {error && <p role="alert" className={MSG_ERROR}>{error}</p>}
+    </form>
   );
 }
 

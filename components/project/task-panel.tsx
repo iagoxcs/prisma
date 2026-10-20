@@ -10,13 +10,16 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { downloadFile, formatSize } from "@/lib/attachments";
-import { dateTime } from "@/lib/format";
+import { dateTime, shortDate } from "@/lib/format";
 import { getSupabase } from "@/lib/supabase/client";
+import { OVERDUE_BADGE, TASK_STATUS_COLOR } from "@/lib/theme/status";
 import { MSG_ERROR, OVERLAY, SELECT_CLASS as BASE_SELECT, TEXTAREA_CLASS, restoreFocus, trapFocus } from "@/lib/ui";
 import { useQuery } from "@/lib/use-query";
+import { cn } from "@/lib/utils";
 import {
   MAX_ATTACHMENT_BYTES,
   TASK_STATUS_LABEL,
+  todayISO,
   type Attachment,
   type Category,
   type ChecklistItem,
@@ -29,6 +32,19 @@ import { Select } from "@/components/ui/select";
 
 const BUCKET = "task-attachments";
 const SELECT_CLASS = `${BASE_SELECT} w-full`;
+
+// Atalhos do cabeçalho: o id fica num invólucro, para não mexer nas seções em si.
+const SECTIONS = [
+  { id: "checklist", label: "Checklist" },
+  { id: "anexos", label: "Anexos" },
+  { id: "comentarios", label: "Comentários" },
+] as const;
+
+// Com prefers-reduced-motion, o salto é instantâneo.
+function scrollToSection(id: string) {
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  document.getElementById(id)?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+}
 
 export function TaskPanel({
   taskId,
@@ -64,6 +80,7 @@ export function TaskPanel({
   const requestClose = () => (dirty ? setConfirmDiscard(true) : onClose());
 
   if (!task) return null;
+  const overdue = !!task.due_date && task.status !== "done" && task.due_date < todayISO();
   // Portal para o <body>: a lâmina (<main>) tem backdrop-filter, que prenderia o position: fixed dentro dela.
   // O drawer é sólido (bg-popover), como os diálogos: vidro sobre o Kanban comprometia a leitura dos campos.
   // key força o formulário a reinicializar ao trocar de tarefa.
@@ -75,7 +92,7 @@ export function TaskPanel({
             ref={asideRef}
             role="dialog"
             aria-modal="true"
-            aria-label="Detalhes da tarefa"
+            aria-label={`Detalhes da tarefa: ${task.title}`}
             tabIndex={-1}
             className="h-full w-full max-w-xl space-y-7 overflow-y-auto border-glass-edge bg-popover p-6 text-popover-foreground shadow-[var(--glass-shadow)] outline-none md:rounded-2xl md:border md:p-7"
             onClick={(e) => e.stopPropagation()}
@@ -84,16 +101,47 @@ export function TaskPanel({
               trapFocus(e, asideRef.current);
             }}
           >
-            <div className="flex items-center justify-between">
-              <span className="text-[0.8125rem] font-medium text-muted-foreground">Detalhes da tarefa</span>
-              <Button variant="ghost" size="icon" aria-label="Fechar" onClick={requestClose}>
-                <X strokeWidth={1.75} />
-              </Button>
-            </div>
+            {/* Fixo no topo da rolagem; as margens negativas anulam o padding do aside para cobrir a borda. */}
+            <header className="sticky top-0 z-10 -mx-6 -mt-6 space-y-2 border-b border-border bg-popover px-6 pt-6 pb-3 md:-mx-7 md:-mt-7 md:px-7 md:pt-7">
+              <div className="flex items-center gap-3">
+                <h2 className="min-w-0 flex-1 truncate text-base font-semibold" title={task.title}>{task.title}</h2>
+                <Button variant="ghost" size="icon" aria-label="Fechar" className="shrink-0" onClick={requestClose}>
+                  <X strokeWidth={1.75} />
+                </Button>
+              </div>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.8125rem]">
+                <span className="flex items-center gap-1.5 text-muted-foreground">
+                  <span className="size-2 shrink-0 rounded-full" style={{ background: TASK_STATUS_COLOR[task.status] }} aria-hidden />
+                  {TASK_STATUS_LABEL[task.status]}
+                </span>
+                {overdue && <span className={cn("num rounded-md px-2.5 py-0.5 text-xs", OVERDUE_BADGE)}>vencida {shortDate(task.due_date!)}</span>}
+                <nav aria-label="Seções da tarefa" className="ml-auto flex gap-1">
+                  {SECTIONS.map((s) => (
+                    <a
+                      key={s.id}
+                      href={`#${s.id}`}
+                      className="rounded-md px-2 py-1 font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        scrollToSection(s.id);
+                      }}
+                    >
+                      {s.label}
+                    </a>
+                  ))}
+                </nav>
+              </div>
+            </header>
             <Details key={taskId} task={task} categories={categories} people={people} onChanged={onChanged} onClose={onClose} onDirtyChange={setDirty} />
-            <Checklist taskId={taskId} />
-            <Attachments taskId={taskId} projectId={task.project_id} />
-            <Comments taskId={taskId} isExternal={isExternal} />
+            <div id="checklist" className="scroll-mt-28">
+              <Checklist taskId={taskId} />
+            </div>
+            <div id="anexos" className="scroll-mt-28">
+              <Attachments taskId={taskId} projectId={task.project_id} />
+            </div>
+            <div id="comentarios" className="scroll-mt-28">
+              <Comments taskId={taskId} isExternal={isExternal} />
+            </div>
           </aside>
         </div>,
         document.body,
