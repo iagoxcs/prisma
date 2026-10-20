@@ -11,6 +11,7 @@ import { buildPreview, CHECKLIST_SEPARATOR, readCsvFile, TEMPLATE_HEADERS, templ
 import { MSG_ERROR, MSG_OK, SELECT_CLASS } from "@/lib/ui";
 import { useQuery } from "@/lib/use-query";
 import { TASK_STATUS_LABEL, type Category, type Person, type Task, type TaskStatus } from "@/types/domain";
+import { Select } from "@/components/ui/select";
 
 const BATCH = 500;
 
@@ -213,14 +214,14 @@ export function TaskImport({
           {(models.data ?? []).length > 0 && (
             <label className="block space-y-1.5">
               <span className="block text-[0.8125rem] font-medium text-muted-foreground">Ou use um modelo da Base de conhecimento</span>
-              <select className={SELECT_CLASS + " w-full"} value={modelId} disabled={busy} onChange={(e) => pickModel(e.target.value)}>
+              <Select className={SELECT_CLASS + " w-full"} value={modelId} disabled={busy} onChange={(e) => pickModel(e.target.value)}>
                 <option value="">Escolher modelo…</option>
                 {(models.data ?? []).map((m) => (
                   <option key={m.id} value={m.id}>
                     {m.methodology ? `${m.methodology.title} · ${m.title}` : m.title}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
           )}
         </div>

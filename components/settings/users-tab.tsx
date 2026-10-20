@@ -10,6 +10,7 @@ import { dateTime } from "@/lib/format";
 import { MSG_ERROR, MSG_OK, ROW_LIST, SELECT_CLASS } from "@/lib/ui";
 import { useQuery } from "@/lib/use-query";
 import { ROLE_LABEL, type Profile, type UserRole } from "@/types/domain";
+import { Select } from "@/components/ui/select";
 
 const ROLES = Object.keys(ROLE_LABEL) as UserRole[];
 
@@ -86,17 +87,17 @@ export function UsersTab() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <Input className="max-w-64" placeholder="Buscar por nome ou e-mail" aria-label="Buscar" value={search} onChange={(e) => setSearch(e.target.value)} />
-        <select aria-label="Filtrar por perfil" className={SELECT_CLASS} value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}>
+        <Select aria-label="Filtrar por perfil" className={SELECT_CLASS} value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}>
           <option value="">Todos os perfis</option>
           {ROLES.map((r) => (
             <option key={r} value={r}>{ROLE_LABEL[r]}</option>
           ))}
-        </select>
-        <select aria-label="Filtrar por situação" className={SELECT_CLASS} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+        </Select>
+        <Select aria-label="Filtrar por situação" className={SELECT_CLASS} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
           <option value="">Ativos e inativos</option>
           <option value="active">Somente ativos</option>
           <option value="inactive">Somente inativos</option>
-        </select>
+        </Select>
         <Button className="ml-auto" onClick={() => setShowCreate((s) => !s)}>{showCreate ? "Fechar" : "Novo usuário"}</Button>
       </div>
 
@@ -128,11 +129,11 @@ export function UsersTab() {
                   </span>
                 </span>
                 <span className="flex flex-wrap items-center gap-2">
-                  <select aria-label={`Perfil de ${u.name}`} className={SELECT_CLASS} value={u.role} onChange={(e) => update(u, e.target.value as UserRole, u.active)}>
+                  <Select aria-label={`Perfil de ${u.name}`} className={SELECT_CLASS} value={u.role} onChange={(e) => update(u, e.target.value as UserRole, u.active)}>
                     {ROLES.map((r) => (
                       <option key={r} value={r}>{ROLE_LABEL[r]}</option>
                     ))}
-                  </select>
+                  </Select>
                   <Button size="sm" variant={u.active ? "outline" : "default"} onClick={() => update(u, u.role, !u.active)}>
                     {u.active ? "Desativar" : "Ativar"}
                   </Button>
@@ -199,11 +200,11 @@ function CreateForm({ onCreated, onError }: { onCreated: (email: string) => void
       </div>
       <div className="space-y-1">
         <Label htmlFor="u-role">Perfil</Label>
-        <select id="u-role" className={`${SELECT_CLASS} w-full`} value={form.role} onChange={(e) => set("role", e.target.value)}>
+        <Select id="u-role" className={`${SELECT_CLASS} w-full`} value={form.role} onChange={(e) => set("role", e.target.value)}>
           {ROLES.map((r) => (
             <option key={r} value={r}>{ROLE_LABEL[r]}</option>
           ))}
-        </select>
+        </Select>
       </div>
       <div className="space-y-1 sm:col-span-2">
         <Label htmlFor="u-job">Cargo</Label>

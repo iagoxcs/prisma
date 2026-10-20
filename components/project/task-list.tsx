@@ -10,6 +10,7 @@ import { SELECT_CLASS } from "@/lib/ui";
 import { usePageSize } from "@/lib/use-page-size";
 import { cn } from "@/lib/utils";
 import { TASK_STATUS_LABEL, todayISO, type Category, type Person, type Task, type TaskStatus } from "@/types/domain";
+import { Select } from "@/components/ui/select";
 
 type SortKey = "title" | "category" | "status" | "assignee" | "start" | "due";
 type Sort = { key: SortKey; dir: "asc" | "desc" };
@@ -102,19 +103,19 @@ export function TaskList({
           value={search}
           onChange={(e) => filter(setSearch)(e.target.value)}
         />
-        <select aria-label="Filtrar por responsável" className={SELECT_CLASS} value={assignee} onChange={(e) => filter(setAssignee)(e.target.value)}>
+        <Select aria-label="Filtrar por responsável" className={SELECT_CLASS} value={assignee} onChange={(e) => filter(setAssignee)(e.target.value)}>
           <option value="">Todos os responsáveis</option>
           {people.map((p) => (
             <option key={p.id} value={p.id}>{p.name}</option>
           ))}
-        </select>
-        <select aria-label="Filtrar por escopo" className={SELECT_CLASS} value={category} onChange={(e) => filter(setCategory)(e.target.value)}>
+        </Select>
+        <Select aria-label="Filtrar por escopo" className={SELECT_CLASS} value={category} onChange={(e) => filter(setCategory)(e.target.value)}>
           <option value="">Todos os escopos</option>
           {categories.map((c) => (
             <option key={c.id} value={c.id}>{c.name}</option>
           ))}
-        </select>
-        <select
+        </Select>
+        <Select
           aria-label="Filtrar por status"
           className={SELECT_CLASS}
           value={status}
@@ -124,7 +125,7 @@ export function TaskList({
           {(Object.keys(TASK_STATUS_LABEL) as TaskStatus[]).map((s) => (
             <option key={s} value={s}>{TASK_STATUS_LABEL[s]}</option>
           ))}
-        </select>
+        </Select>
       </div>
 
       {rows.length === 0 ? (

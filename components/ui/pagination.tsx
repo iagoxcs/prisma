@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SELECT_CLASS } from "@/lib/ui";
 import { cn } from "@/lib/utils";
+import { Select } from "./select";
 
 // Paginação genérica no cliente. `page` começa em 1 e já deve vir dentro do intervalo (ver clampPage).
 export function Pagination({
@@ -33,11 +34,11 @@ export function Pagination({
     <nav aria-label="Paginação" className={cn("flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-sm", className)}>
       <div className="flex items-center gap-2">
         <label htmlFor={sizeId} className="text-[0.8125rem] font-medium text-muted-foreground">Itens por página</label>
-        <select id={sizeId} className={cn(SELECT_CLASS, "num")} value={size} onChange={(e) => onSize(Number(e.target.value))}>
+        <Select id={sizeId} className={cn(SELECT_CLASS, "num")} value={size} onChange={(e) => onSize(Number(e.target.value))}>
           {sizes.map((s) => (
             <option key={s} value={s}>{s}</option>
           ))}
-        </select>
+        </Select>
       </div>
       <div className="flex items-center gap-3">
         <p className="text-muted-foreground" aria-live="polite">

@@ -25,6 +25,7 @@ import {
   type TaskComment,
   type TaskStatus,
 } from "@/types/domain";
+import { Select } from "@/components/ui/select";
 
 const BUCKET = "task-attachments";
 const SELECT_CLASS = `${BASE_SELECT} w-full`;
@@ -198,29 +199,29 @@ function Details({
       <div className="grid grid-cols-1 gap-4 rounded-xl bg-secondary p-4 sm:grid-cols-2">
         <div className="space-y-1.5">
           <Label htmlFor="t-status">Status</Label>
-          <select id="t-status" className={SELECT_CLASS} value={form.status} onChange={(e) => set("status", e.target.value as TaskStatus)}>
+          <Select id="t-status" className={SELECT_CLASS} value={form.status} onChange={(e) => set("status", e.target.value as TaskStatus)}>
             {(Object.keys(TASK_STATUS_LABEL) as TaskStatus[]).map((s) => (
               <option key={s} value={s}>{TASK_STATUS_LABEL[s]}</option>
             ))}
-          </select>
+          </Select>
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="t-assignee">Responsável</Label>
-          <select id="t-assignee" className={SELECT_CLASS} value={form.assignee_id} onChange={(e) => set("assignee_id", e.target.value)}>
+          <Select id="t-assignee" className={SELECT_CLASS} value={form.assignee_id} onChange={(e) => set("assignee_id", e.target.value)}>
             <option value="">Sem responsável</option>
             {people.map((p) => (
               <option key={p.id} value={p.id}>{p.name}</option>
             ))}
-          </select>
+          </Select>
         </div>
         <div className="space-y-1.5 sm:col-span-2">
           <Label htmlFor="t-scope">Escopo</Label>
-          <select id="t-scope" className={SELECT_CLASS} value={form.category_id} onChange={(e) => set("category_id", e.target.value)}>
+          <Select id="t-scope" className={SELECT_CLASS} value={form.category_id} onChange={(e) => set("category_id", e.target.value)}>
             <option value="">Sem escopo</option>
             {categories.map((c) => (
               <option key={c.id} value={c.id}>{c.name}</option>
             ))}
-          </select>
+          </Select>
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="t-start">Início</Label>

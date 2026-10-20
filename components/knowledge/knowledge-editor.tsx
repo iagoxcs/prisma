@@ -13,6 +13,7 @@ import { MSG_ERROR, SELECT_CLASS, TEXTAREA_CLASS } from "@/lib/ui";
 import { useQuery } from "@/lib/use-query";
 import { cn } from "@/lib/utils";
 import { KNOWLEDGE_KIND_LABEL, type KnowledgeItem, type KnowledgeStatus } from "@/types/domain";
+import { Select } from "@/components/ui/select";
 
 const NO_PERMISSION = "Você não tem permissão para editar este item.";
 const LABEL = "block text-[0.8125rem] font-medium text-muted-foreground";
@@ -161,11 +162,11 @@ export function KnowledgeEditor({
         {isModel && (
           <label className="space-y-1.5">
             <span className={LABEL}>Metodologia</span>
-            <select className={SELECT_CLASS} required value={methodology} onChange={(e) => setMethodology(e.target.value)}>
+            <Select className={SELECT_CLASS} required value={methodology} onChange={(e) => setMethodology(e.target.value)}>
               {(methodologies.data ?? []).map((m) => (
                 <option key={m.id} value={m.id}>{m.title}</option>
               ))}
-            </select>
+            </Select>
           </label>
         )}
         <label className="min-w-64 flex-1 space-y-1.5">

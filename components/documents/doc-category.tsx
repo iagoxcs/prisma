@@ -7,6 +7,7 @@ import { SELECT_CLASS } from "@/lib/ui";
 import { useQuery } from "@/lib/use-query";
 import { cn } from "@/lib/utils";
 import { DOC_CATEGORY_LABEL, type DocCategory } from "@/types/domain";
+import { Select } from "@/components/ui/select";
 
 const NO_PERMISSION = "Você não tem permissão para categorizar este documento.";
 export const DOC_CATEGORIES = Object.keys(DOC_CATEGORY_LABEL) as DocCategory[];
@@ -64,7 +65,7 @@ export function DocCategoryField({
   }
 
   return (
-    <select
+    <Select
       aria-label={`Categoria de ${fileName}`}
       className={cn(SELECT_CLASS, "px-2", className)}
       value={value ?? ""}
@@ -75,6 +76,6 @@ export function DocCategoryField({
       {DOC_CATEGORIES.map((c) => (
         <option key={c} value={c}>{DOC_CATEGORY_LABEL[c]}</option>
       ))}
-    </select>
+    </Select>
   );
 }
