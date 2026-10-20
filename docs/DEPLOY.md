@@ -16,6 +16,7 @@ O navegador fala direto com o Supabase usando o login do usuário; a KingHost s�
 
 1. **Supabase (migrações e Edge Functions):** `supabase link`, prévia com `supabase db push --dry-run`, aplicação com `supabase db push` e `supabase functions deploy`. É o único caminho pelo qual migrações chegam ao banco.
 2. **Site (KingHost):** só roda se o job 1 passar. Executa `npm ci`, lint, typecheck, *Conferir variáveis públicas*, build, *Conferir o build (sem chave secreta em ./out)*, *Gravar versão* (`out/version.txt` com o commit), *Pasta de destino* (valida `KINGHOST_FTP_DIR`) e *Enviar ./out por FTPS* (`SamKirkland/FTP-Deploy-Action`, só arquivos alterados).
+   O envio tenta até 3 vezes, com 45 s entre as tentativas, porque a conexão FTP com a KingHost às vezes falha (`connect ETIMEDOUT 191.6.222.10:21`); uma tentativa que falhou aparece como aviso no job, e só a falha da 3ª derruba o deploy.
 3. **Conferir o site no ar** (último passo do job 2): baixa `https://prisma.ambienteconsulta.com.br/version.txt` e falha se o domínio não servir o commit recém-enviado (sinal de pasta errada); avisa se `X-Frame-Options: DENY` não vier (sinal de `.htaccess` inativo).
 
 Um deploy por vez, na ordem dos merges. Também dá para rodar manualmente em GitHub → Actions → *Deploy produção* → *Run workflow*.
