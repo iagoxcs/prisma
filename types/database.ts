@@ -700,6 +700,7 @@ export type Database = {
       task_attachments: {
         Row: {
           created_at: string
+          doc_category: string | null
           file_name: string
           id: string
           mime_type: string | null
@@ -710,6 +711,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          doc_category?: string | null
           file_name: string
           id?: string
           mime_type?: string | null
@@ -720,6 +722,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          doc_category?: string | null
           file_name?: string
           id?: string
           mime_type?: string | null
@@ -867,6 +870,7 @@ export type Database = {
           client_id: string | null
           client_name: string | null
           created_at: string | null
+          doc_category: string | null
           file_name: string | null
           id: string | null
           mime_type: string | null

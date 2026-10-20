@@ -85,6 +85,8 @@ export interface Attachment {
   storage_path: string;
   file_name: string;
   size_bytes: number;
+  uploaded_by: string | null;
+  doc_category: DocCategory | null;
 }
 
 export interface TaskComment {
@@ -142,6 +144,7 @@ export interface ProjectDocument {
   mime_type: string | null;
   uploaded_by: string | null;
   created_at: string;
+  doc_category: DocCategory | null;
   task_title: string;
   project_id: string;
   category_id: string | null;
@@ -151,6 +154,30 @@ export interface ProjectDocument {
   category_name: string | null;
   uploader_name: string | null;
 }
+
+// Categoria do documento (lista fixa, check em task_attachments.doc_category). Nulo = sem categoria.
+export type DocCategory =
+  | "politica"
+  | "pop"
+  | "ata"
+  | "relatorio"
+  | "proposta_contrato"
+  | "planilha"
+  | "evidencia"
+  | "apresentacao"
+  | "outros";
+
+export const DOC_CATEGORY_LABEL: Record<DocCategory, string> = {
+  politica: "Política",
+  pop: "POP",
+  ata: "Ata",
+  relatorio: "Relatório",
+  proposta_contrato: "Proposta/Contrato",
+  planilha: "Planilha",
+  evidencia: "Evidência",
+  apresentacao: "Apresentação",
+  outros: "Outros",
+};
 
 // Base de Conhecimento: metodologias (Markdown) e modelos de projeto vinculados (planilha de fases).
 export type KnowledgeKind = "metodologia" | "modelo";

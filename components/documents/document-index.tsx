@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { Download } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { ChevronDown, ChevronRight, Download } from "lucide-react";
+import { DOC_CATEGORIES, DocCategoryField, useCanCategorize } from "@/components/documents/doc-category";
 import { Pagination } from "@/components/pagination";
+import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/ui/error-state";
 import { Input } from "@/components/ui/input";
 import { SkeletonList } from "@/components/ui/skeleton";
@@ -13,11 +15,11 @@ import { getSupabase } from "@/lib/supabase/client";
 import { MSG_ERROR, SELECT_CLASS } from "@/lib/ui";
 import { usePageSize } from "@/lib/use-page-size";
 import { useQuery } from "@/lib/use-query";
-import type { ProjectDocument } from "@/types/domain";
+import { DOC_CATEGORY_LABEL, type DocCategory, type ProjectDocument } from "@/types/domain";
 
 const BUCKET = "task-attachments";
 const COLS =
-  "id, task_id, storage_path, file_name, size_bytes, mime_type, uploaded_by, created_at, task_title, project_id, category_id, project_name, client_id, client_name, category_name, uploader_name";
+  "id, task_id, storage_path, file_name, size_bytes, mime_type, uploaded_by, created_at, doc_category, task_title, project_id, category_id, project_name, client_id, client_name, category_name, uploader_name";
 
 // Tipo pelo sufixo do nome do arquivo. "outros" = nenhum dos sufixos conhecidos.
 const FILE_TYPES = {
@@ -33,19 +35,65 @@ const KNOWN_EXT = Object.values(FILE_TYPES).flatMap((t) => t.ext);
 type Option = { id: string; name: string };
 type Group = { id: string; name: string; client: string | null; docs: ProjectDocument[] };
 
-// Índice de anexos (GED). Sem projectId: todos os projetos visíveis, agrupados; com projectId: só o projeto.
+// Projetos recolhidos no GED, guardados no navegador (ids em JSON).
+const COLLAPSED_KEY = "prisma-documents-collapsed";
+const COLLAPSED_EVENT = "prisma-documents-collapsed-change";
+
+function readCollapsed() {
+  try {
+    return localStorage.getItem(COLLAPSED_KEY) ?? "[]";
+  } catch {
+    return "[]";
+  }
+}
+
+function subscribeCollapsed(onChange: () => void) {
+  window.addEventListener("storage", onChange);
+  window.addEventListener(COLLAPSED_EVENT, onChange);
+  return () => {
+    window.removeEventListener("storage", onChange);
+    window.removeEventListener(COLLAPSED_EVENT, onChange);
+  };
+}
+
+// No export estático, o HTML e a hidratação saem tudo expandido; o estado salvo entra após a montagem.
+function useCollapsed(): [Set<string>, (ids: Set<string>) => void] {
+  const raw = useSyncExternalStore(subscribeCollapsed, readCollapsed, () => "[]");
+  const collapsed = useMemo(() => {
+    try {
+      const ids: unknown = JSON.parse(raw);
+      return new Set(Array.isArray(ids) ? ids.filter((v): v is string => typeof v === "string") : []);
+    } catch {
+      return new Set<string>();
+    }
+  }, [raw]);
+  const setCollapsed = useCallback((ids: Set<string>) => {
+    try {
+      localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...ids]));
+    } catch {
+      /* navegação privada: o estado não persiste */
+    }
+    window.dispatchEvent(new Event(COLLAPSED_EVENT));
+  }, []);
+  return [collapsed, setCollapsed];
+}
+
+// Índice de anexos (GED). Sem projectId: todos os projetos visíveis, agrupados e recolhíveis; com projectId: só o projeto.
 // Paginação no servidor; a RLS da view (security_invoker) decide o que cada pessoa enxerga.
 export function DocumentIndex({ projectId }: { projectId?: string }) {
   const [nameInput, setNameInput] = useState("");
   const [name, setName] = useState("");
   const [project, setProject] = useState("");
   const [category, setCategory] = useState("");
+  const [docCategory, setDocCategory] = useState<DocCategory | "sem" | "">("");
   const [type, setType] = useState<FileType | "">("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = usePageSize("documents");
   const [error, setError] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useCollapsed();
+  const canCategorize = useCanCategorize();
 
   // Busca por nome com debounce de 300ms.
   useEffect(() => {
@@ -70,6 +118,8 @@ export function DocumentIndex({ projectId }: { projectId?: string }) {
     if (projectId) q = q.eq("project_id", projectId);
     else if (project) q = q.eq("project_id", project);
     if (projectId && category) q = q.eq("category_id", category);
+    if (docCategory === "sem") q = q.is("doc_category", null);
+    else if (docCategory) q = q.eq("doc_category", docCategory);
     if (name) q = q.ilike("file_name", `%${name.replace(/[\\%_]/g, (c) => `\\${c}`)}%`);
     if (type === "outros") for (const ext of KNOWN_EXT) q = q.not("file_name", "ilike", `%.${ext}`);
     else if (type) q = q.or(FILE_TYPES[type].ext.map((ext) => `file_name.ilike.%.${ext}`).join(","));
@@ -82,9 +132,9 @@ export function DocumentIndex({ projectId }: { projectId?: string }) {
       .order("created_at", { ascending: false })
       .range(start, start + pageSize - 1);
     return { data: { rows: (r.data ?? []) as unknown as ProjectDocument[], total: r.count ?? 0 }, error: r.error };
-  }, [projectId, project, category, name, type, from, to, page, pageSize]);
+  }, [projectId, project, category, docCategory, name, type, from, to, page, pageSize]);
 
-  const filtered = !!(name || project || category || type || from || to);
+  const filtered = !!(name || project || category || docCategory || type || from || to);
   const rows = useMemo(() => docs.data?.rows ?? [], [docs.data]);
   const total = docs.data?.total ?? 0;
 
@@ -97,6 +147,7 @@ export function DocumentIndex({ projectId }: { projectId?: string }) {
     }
     return [...map.values()];
   }, [rows]);
+  const allCollapsed = groups.length > 0 && groups.every((g) => collapsed.has(g.id));
 
   // Filtro novo: volta para a primeira página.
   const filter = <T,>(set: (v: T) => void) => (v: T) => {
@@ -104,11 +155,39 @@ export function DocumentIndex({ projectId }: { projectId?: string }) {
     setPage(1);
   };
 
+  function toggle(id: string) {
+    const next = new Set(collapsed);
+    if (!next.delete(id)) next.add(id);
+    setCollapsed(next);
+  }
+
+  function toggleAll() {
+    const next = new Set(collapsed);
+    for (const g of groups) {
+      if (allCollapsed) next.delete(g.id);
+      else next.add(g.id);
+    }
+    setCollapsed(next);
+  }
+
   async function download(d: ProjectDocument) {
     setError(null);
     const err = await downloadFile(BUCKET, d.storage_path, d.file_name);
     if (err) setError(err);
   }
+
+  const table = (list: ProjectDocument[]) => (
+    <DocumentTable
+      docs={list}
+      onDownload={download}
+      canEdit={(d) => canCategorize(d.project_id, d.uploaded_by)}
+      onSaved={() => {
+        setError(null);
+        docs.reload();
+      }}
+      onError={setError}
+    />
+  );
 
   return (
     <div className="space-y-4">
@@ -140,6 +219,18 @@ export function DocumentIndex({ projectId }: { projectId?: string }) {
             ))}
           </select>
         )}
+        <select
+          aria-label="Filtrar por categoria do documento"
+          className={SELECT_CLASS}
+          value={docCategory}
+          onChange={(e) => filter(setDocCategory)(e.target.value as DocCategory | "sem" | "")}
+        >
+          <option value="">Todas as categorias</option>
+          {DOC_CATEGORIES.map((c) => (
+            <option key={c} value={c}>{DOC_CATEGORY_LABEL[c]}</option>
+          ))}
+          <option value="sem">Sem categoria</option>
+        </select>
         <select aria-label="Filtrar por tipo de arquivo" className={SELECT_CLASS} value={type} onChange={(e) => filter(setType)(e.target.value as FileType | "")}>
           <option value="">Todos os tipos</option>
           {(Object.keys(FILE_TYPES) as (keyof typeof FILE_TYPES)[]).map((k) => (
@@ -155,6 +246,11 @@ export function DocumentIndex({ projectId }: { projectId?: string }) {
           <span className="block text-[0.8125rem] font-medium text-muted-foreground">até</span>
           <Input type="date" className="num" value={to} min={from || undefined} onChange={(e) => filter(setTo)(e.target.value)} />
         </label>
+        {!projectId && groups.length > 1 && (
+          <Button type="button" variant="ghost" className="h-11" onClick={toggleAll}>
+            {allCollapsed ? "Expandir todos" : "Recolher todos"}
+          </Button>
+        )}
       </div>
 
       {error && <p role="alert" className={MSG_ERROR}>{error}</p>}
@@ -168,33 +264,62 @@ export function DocumentIndex({ projectId }: { projectId?: string }) {
       )}
 
       {!docs.error && rows.length > 0 &&
-        (projectId ? (
-          <DocumentTable docs={rows} onDownload={download} />
-        ) : (
-          groups.map((g) => (
-            <section key={g.id} className="space-y-2" aria-labelledby={`docs-${g.id}`}>
-              <h2 id={`docs-${g.id}`} className="flex flex-wrap items-baseline gap-x-2 text-base font-semibold">
-                {g.name}
-                {g.client && <span className="text-sm font-normal text-muted-foreground">{g.client}</span>}
-                <span className="num text-sm font-normal text-muted-foreground">{g.docs.length}</span>
-              </h2>
-              <DocumentTable docs={g.docs} onDownload={download} />
-            </section>
-          ))
-        ))}
+        (projectId
+          ? table(rows)
+          : groups.map((g) => {
+              const open = !collapsed.has(g.id);
+              return (
+                <section key={g.id} className="space-y-2" aria-labelledby={`docs-${g.id}`}>
+                  <h2 id={`docs-${g.id}`} className="text-base font-semibold">
+                    <button
+                      type="button"
+                      aria-expanded={open}
+                      aria-controls={`docs-body-${g.id}`}
+                      onClick={() => toggle(g.id)}
+                      className="-ml-2 flex min-h-11 flex-wrap items-center gap-x-2 rounded-md px-2 text-left hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
+                    >
+                      {open ? (
+                        <ChevronDown className="size-4 shrink-0 text-brand-mid" strokeWidth={1.75} aria-hidden />
+                      ) : (
+                        <ChevronRight className="size-4 shrink-0 text-brand-mid" strokeWidth={1.75} aria-hidden />
+                      )}
+                      {g.name}
+                      {g.client && <span className="text-sm font-normal text-muted-foreground">{g.client}</span>}
+                      <span className="num text-sm font-normal text-muted-foreground">{g.docs.length}</span>
+                    </button>
+                  </h2>
+                  <div id={`docs-body-${g.id}`} hidden={!open}>
+                    {open && table(g.docs)}
+                  </div>
+                </section>
+              );
+            }))}
 
       <Pagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} onPageSizeChange={setPageSize} />
     </div>
   );
 }
 
-function DocumentTable({ docs, onDownload }: { docs: ProjectDocument[]; onDownload: (d: ProjectDocument) => void }) {
+function DocumentTable({
+  docs,
+  onDownload,
+  canEdit,
+  onSaved,
+  onError,
+}: {
+  docs: ProjectDocument[];
+  onDownload: (d: ProjectDocument) => void;
+  canEdit: (d: ProjectDocument) => boolean;
+  onSaved: () => void;
+  onError: (message: string) => void;
+}) {
   return (
     <div className="surface-card overflow-x-auto">
-      <table className="w-full min-w-[48rem] text-left text-sm">
+      <table className="w-full min-w-[56rem] text-left text-sm">
         <thead>
           <tr className="border-b text-sm font-medium text-muted-foreground">
             <th scope="col" className="h-11 px-4 font-medium">Arquivo</th>
+            <th scope="col" className="px-4 font-medium">Categoria</th>
             <th scope="col" className="px-4 font-medium">Tarefa</th>
             <th scope="col" className="px-4 font-medium">Escopo</th>
             <th scope="col" className="px-4 font-medium">Enviado por</th>
@@ -215,6 +340,16 @@ function DocumentTable({ docs, onDownload }: { docs: ProjectDocument[]; onDownlo
                   <span className="truncate">{d.file_name}</span>
                   <span className="sr-only">(baixar)</span>
                 </button>
+              </td>
+              <td className="px-4 whitespace-nowrap">
+                <DocCategoryField
+                  id={d.id}
+                  fileName={d.file_name}
+                  value={d.doc_category}
+                  editable={canEdit(d)}
+                  onSaved={onSaved}
+                  onError={onError}
+                />
               </td>
               <td className="px-4">
                 <Link href={`/projeto/?id=${d.project_id}&task=${d.task_id}`} className="inline-flex min-h-11 items-center hover:underline">

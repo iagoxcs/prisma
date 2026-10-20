@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import { Download, Paperclip, X } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
+import { DocCategoryField, useCanCategorize } from "@/components/documents/doc-category";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
@@ -314,8 +315,14 @@ function Checklist({ taskId }: { taskId: string }) {
 
 function Attachments({ taskId, projectId }: { taskId: string; projectId: string }) {
   const { profile } = useAuth();
+  const canCategorize = useCanCategorize();
   const list = useQuery<Attachment[]>(
-    () => getSupabase().from("task_attachments").select("id, task_id, storage_path, file_name, size_bytes").eq("task_id", taskId).order("created_at"),
+    () =>
+      getSupabase()
+        .from("task_attachments")
+        .select("id, task_id, storage_path, file_name, size_bytes, uploaded_by, doc_category")
+        .eq("task_id", taskId)
+        .order("created_at"),
     [taskId],
   );
   const [error, setError] = useState<string | null>(null);
@@ -368,12 +375,26 @@ function Attachments({ taskId, projectId }: { taskId: string; projectId: string 
       <h3>Anexos</h3>
       <ul className="flex flex-col gap-2 text-sm">
         {(list.data ?? []).map((a) => (
-          <li key={a.id} className="surface-card flex min-h-11 items-center justify-between gap-2 py-1 pr-1 pl-3">
-            <button type="button" className="flex min-w-0 items-center gap-2 text-left font-medium hover:underline" onClick={() => download(a)}>
+          <li key={a.id} className="surface-card flex min-h-11 flex-wrap items-center justify-between gap-2 py-1 pr-1 pl-3">
+            <button type="button" className="flex min-w-0 flex-1 items-center gap-2 text-left font-medium hover:underline" onClick={() => download(a)}>
               <Download className="size-4 shrink-0 text-brand-mid" strokeWidth={1.75} aria-hidden />
               <span className="truncate">{a.file_name}</span>
             </button>
             <span className="flex shrink-0 items-center gap-1 text-muted-foreground">
+              <span className="text-xs">
+                <DocCategoryField
+                  id={a.id}
+                  fileName={a.file_name}
+                  value={a.doc_category}
+                  editable={canCategorize(projectId, a.uploaded_by)}
+                  onSaved={() => {
+                    setError(null);
+                    list.reload();
+                  }}
+                  onError={setError}
+                  className="w-auto text-xs"
+                />
+              </span>
               <span className="num text-xs">{formatSize(a.size_bytes)}</span>
               {profile && !profile.is_external && (
                 <Button variant="ghost" size="icon-sm" aria-label={`Remover anexo ${a.file_name}`} className="hover:text-destructive" onClick={() => remove(a)}>
