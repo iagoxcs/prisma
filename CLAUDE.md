@@ -7,7 +7,7 @@ Decisões e arquitetura: `docs/ARQUITETURA.md`. Fases: `docs/ROADMAP.md`. Deploy
 Identidade visual: `docs/IDENTIDADE-VISUAL.md`.
 
 ## Stack
-Next.js (App Router) + TypeScript + Tailwind + shadcn/ui · Supabase (Auth, Postgres+RLS, Storage, Realtime, Edge Functions, pg_cron) · publicação **estática** na KingHost (`https://prisma.ambienteconsulta.com.br`).
+Next.js (App Router) + TypeScript + Tailwind + shadcn/ui · Supabase (Auth, Postgres+RLS, Storage, Realtime, Edge Functions, pg_cron) · publicação **estática** na KingHost (https://prisma.ambienteconsulta.com.br) via GitHub Actions.
 
 ## Regras (inegociáveis)
 - **Toda tabela nova nasce com `enable row level security` e policies na mesma migração.**
@@ -30,6 +30,7 @@ Next.js (App Router) + TypeScript + Tailwind + shadcn/ui · Supabase (Auth, Post
 - Interface em pt-BR; usar o termo **"Líderes"**. Colunas/identificadores em inglês (`title`, `due_date`, `assignee_id`).
 - Papéis: `admin`, `gerente`, `lider`, `consultor`, `externo` (matriz em `docs/ARQUITETURA.md`).
 - Datas/horas: `timestamptz` no banco; exibir em America/Sao_Paulo.
+- Há um único projeto Supabase e ele é produção: proibido `apply_migration` pelo MCP; migrações chegam ao banco só pelo workflow de deploy (`supabase db push`) após merge em `main`.
 - Supabase MCP só no projeto **dev**, de preferência read-only. Plan mode para schema, permissões e ai-gateway.
 - Migração aplicada pelo MCP (`apply_migration`) é registrada com o horário da aplicação: renomeie o arquivo em `supabase/migrations/` para a versão que `list_migrations` mostrar, para o histórico local e o remoto baterem (evita conflito no `supabase db push`).
 
