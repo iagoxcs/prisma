@@ -59,7 +59,7 @@ Depois, em Authentication → *Rate Limits*, suba *Rate limit for sending emails
 - *Reset Password*: `supabase/templates/recovery.html`, assunto `Prisma: redefinir sua senha`
 - *Change Email Address*: `supabase/templates/email_change.html`, assunto `Prisma: confirme seu novo e-mail`
 
-Os arquivos são a fonte. Ao mudar um, cole de novo no painel. O link de recuperação aponta para `/redefinir-senha/?token_hash=…`, que valida o token no navegador (funciona no site estático). Por isso, o *Site URL* do item 1.1 precisa ser o domínio de produção.
+Os arquivos são a fonte. Ao mudar um, cole de novo no painel. O link de recuperação aponta para `/redefinir-senha/?token_hash=…`, que valida o token no navegador (funciona no site estático). Por isso, o *Site URL* do item 1.1 precisa ser o domínio de produção. A tela também aceita o link do template padrão do Supabase (`?code=…`, fluxo PKCE), mas esse só funciona se for aberto no mesmo navegador em que a recuperação foi pedida; com o template do repositório, funciona em qualquer navegador.
 
 **c) Secrets da Edge Function** (uma vez, fora do GitHub):
 ```bash

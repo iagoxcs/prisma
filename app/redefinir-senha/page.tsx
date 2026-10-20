@@ -22,27 +22,34 @@ export default function RedefinirSenhaPage() {
   );
 }
 
-// Link do e-mail de recuperação: ?token_hash=…&type=recovery (template supabase/templates/recovery.html).
+// O link do e-mail de recuperação chega em um de dois formatos:
+// - ?token_hash=…&type=recovery: template supabase/templates/recovery.html, validado aqui por verifyOtp;
+// - ?code=…: template padrão do Supabase ({{ .ConfirmationURL }}, fluxo PKCE). O supabase-js troca o
+//   código pela sessão ao iniciar (detectSessionInUrl) e getSession() aguarda essa troca.
+//   Só funciona no mesmo navegador em que o link foi pedido (o verificador PKCE fica nele).
 function ResetForm() {
   const router = useRouter();
   const params = useSearchParams();
   const tokenHash = params.get("token_hash");
-  const [state, setState] = useState<"checking" | "ready" | "invalid">(tokenHash ? "checking" : "invalid");
+  const code = params.get("code");
+  const [state, setState] = useState<"checking" | "ready" | "invalid">(tokenHash || code ? "checking" : "invalid");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (!tokenHash) return;
+    if (!tokenHash && !code) return;
     let alive = true;
-    getSupabase()
-      .auth.verifyOtp({ type: "recovery", token_hash: tokenHash })
-      .then(({ error }) => alive && setState(error ? "invalid" : "ready"));
+    const auth = getSupabase().auth;
+    const check = tokenHash
+      ? auth.verifyOtp({ type: "recovery", token_hash: tokenHash }).then(({ error }) => !error)
+      : auth.getSession().then(({ data }) => !!data.session);
+    check.then((ok) => alive && setState(ok ? "ready" : "invalid"));
     return () => {
       alive = false;
     };
-  }, [tokenHash]);
+  }, [tokenHash, code]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -62,6 +69,9 @@ function ResetForm() {
     return (
       <div className="space-y-4">
         <p role="alert" className={MSG_ERROR}>Este link é inválido ou expirou.</p>
+        {code && (
+          <p className="text-[0.8125rem] text-muted-foreground">Abra o link no mesmo navegador em que pediu a recuperação.</p>
+        )}
         <Link href="/recuperar-senha/" className={buttonVariants({ className: "w-full" })}>Pedir um novo link</Link>
       </div>
     );
