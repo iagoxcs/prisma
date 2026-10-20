@@ -130,3 +130,103 @@ export const notificationHref = (n: Pick<AppNotification, "project_id" | "entity
 
 // Data de hoje (YYYY-MM-DD) no fuso de Brasília.
 export const todayISO = () => new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" });
+
+// GED: anexos de tarefas indexados por projeto (view project_documents, security_invoker).
+// Nomes podem vir nulos quando a RLS esconde a linha relacionada (ex.: cliente para externos).
+export interface ProjectDocument {
+  id: string;
+  task_id: string;
+  storage_path: string;
+  file_name: string;
+  size_bytes: number;
+  mime_type: string | null;
+  uploaded_by: string | null;
+  created_at: string;
+  task_title: string;
+  project_id: string;
+  category_id: string | null;
+  project_name: string;
+  client_id: string | null;
+  client_name: string | null;
+  category_name: string | null;
+  uploader_name: string | null;
+}
+
+// Base de Conhecimento: metodologias (Markdown) e modelos de projeto vinculados (planilha de fases).
+export type KnowledgeKind = "metodologia" | "modelo";
+export type KnowledgeStatus = "rascunho" | "publicado";
+export type PrismaStage = "processos" | "resultados" | "indicadores" | "sistemas" | "melhoria" | "alinhamento";
+
+export const KNOWLEDGE_KIND_LABEL: Record<KnowledgeKind, string> = {
+  metodologia: "Metodologia",
+  modelo: "Modelo",
+};
+
+export const KNOWLEDGE_STATUS_LABEL: Record<KnowledgeStatus, string> = {
+  rascunho: "Rascunho",
+  publicado: "Publicado",
+};
+
+export const PRISMA_STAGE_LABEL: Record<PrismaStage, string> = {
+  processos: "Processos",
+  resultados: "Resultados",
+  indicadores: "Indicadores",
+  sistemas: "Sistemas",
+  melhoria: "Melhoria",
+  alinhamento: "Alinhamento",
+};
+
+// `search` (tsvector) fica de fora: selecione colunas explícitas.
+export interface KnowledgeItem {
+  id: string;
+  title: string;
+  kind: KnowledgeKind;
+  methodology_id: string | null; // modelo → metodologia a que pertence
+  prisma_stage: PrismaStage | null;
+  tags: string[];
+  summary: string | null;
+  body: string | null; // Markdown (metodologia)
+  source_file_name: string | null; // .md de origem do corpo
+  template_csv: string | null; // planilha de fases (modelo), no formato da importação de tarefas
+  template_file_name: string | null;
+  status: KnowledgeStatus;
+  version: number;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface KnowledgeFile {
+  id: string;
+  item_id: string;
+  storage_path: string;
+  file_name: string;
+  size_bytes: number;
+  mime_type: string | null;
+  uploaded_by: string | null;
+  created_at: string;
+}
+
+// Contexto do projeto (reuniões). Só internos membros do projeto.
+export type ContextKind = "transcricao" | "ata" | "anotacao";
+
+export const CONTEXT_KIND_LABEL: Record<ContextKind, string> = {
+  transcricao: "Transcrição",
+  ata: "Ata",
+  anotacao: "Anotação",
+};
+
+export interface ProjectContextEntry {
+  id: string;
+  project_id: string;
+  kind: ContextKind;
+  title: string;
+  meeting_date: string | null;
+  participants: string | null;
+  body: string;
+  source_file_name: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}

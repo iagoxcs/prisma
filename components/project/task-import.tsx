@@ -7,11 +7,15 @@ import { Button } from "@/components/ui/button";
 import { brDate } from "@/lib/format";
 import { getSupabase } from "@/lib/supabase/client";
 import { CATEGORY_PALETTE } from "@/lib/theme/status";
-import { buildPreview, CHECKLIST_SEPARATOR, TEMPLATE_HEADERS, templateCsv, type ImportPreview } from "@/lib/task-csv";
-import { MSG_ERROR, MSG_OK } from "@/lib/ui";
+import { buildPreview, CHECKLIST_SEPARATOR, readCsvFile, TEMPLATE_HEADERS, templateCsv, type ImportPreview } from "@/lib/task-csv";
+import { MSG_ERROR, MSG_OK, SELECT_CLASS } from "@/lib/ui";
+import { useQuery } from "@/lib/use-query";
 import { TASK_STATUS_LABEL, type Category, type Person, type Task, type TaskStatus } from "@/types/domain";
 
 const BATCH = 500;
+
+// Modelos publicados na Base de Conhecimento que têm planilha de fases.
+type KnowledgeModel = { id: string; title: string; methodology: { title: string } | null };
 
 // Diálogo de importação de tarefas por CSV. Só "Título" é obrigatório.
 export function TaskImport({
@@ -36,6 +40,19 @@ export function TaskImport({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
+  const [modelId, setModelId] = useState("");
+  const models = useQuery<KnowledgeModel[]>(
+    () =>
+      getSupabase()
+        .from("knowledge_items")
+        .select("id, title, methodology:methodology_id(title)")
+        .eq("kind", "modelo")
+        .eq("status", "publicado")
+        .not("template_csv", "is", null)
+        .order("title")
+        .then((r) => ({ data: r.data as unknown as KnowledgeModel[] | null, error: r.error })),
+    [],
+  );
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && !busy && onClose();
@@ -49,8 +66,23 @@ export function TaskImport({
     setError(null);
     setDone(null);
     if (!file) return;
+    setModelId("");
     setFileName(file.name);
-    setPreview(buildPreview(await readText(file), categories, people));
+    setPreview(buildPreview(await readCsvFile(file), categories, people));
+  }
+
+  // Planilha de fases de um modelo da base: mesmo fluxo de pré-visualização do arquivo.
+  async function pickModel(id: string) {
+    setModelId(id);
+    setError(null);
+    setDone(null);
+    setPreview(null);
+    setFileName("");
+    if (!id) return;
+    const { data, error } = await getSupabase().from("knowledge_items").select("title, template_csv").eq("id", id).maybeSingle();
+    if (error || !data?.template_csv) return setError(error?.message ?? "O modelo não tem planilha de fases.");
+    setFileName(`Modelo: ${data.title}`);
+    setPreview(buildPreview(data.template_csv as string, categories, people));
   }
 
   function downloadTemplate() {
@@ -178,6 +210,19 @@ export function TaskImport({
             </label>
             {fileName && <span className="num truncate text-[0.8125rem] text-muted-foreground">{fileName}</span>}
           </div>
+          {(models.data ?? []).length > 0 && (
+            <label className="block space-y-1.5">
+              <span className="block text-[0.8125rem] font-medium text-muted-foreground">Ou use um modelo da Base de conhecimento</span>
+              <select className={SELECT_CLASS + " w-full"} value={modelId} disabled={busy} onChange={(e) => pickModel(e.target.value)}>
+                <option value="">Escolher modelo…</option>
+                {(models.data ?? []).map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.methodology ? `${m.methodology.title} · ${m.title}` : m.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
         </div>
 
         {preview && (
@@ -263,9 +308,3 @@ function Issues({ title, items, className }: { title: string; items: { line: num
   );
 }
 
-// CSV do Excel em pt-BR costuma vir em Windows-1252; se o UTF-8 trouxer caracteres inválidos, relê nessa codificação.
-async function readText(file: File): Promise<string> {
-  const buffer = await file.arrayBuffer();
-  const utf8 = new TextDecoder("utf-8").decode(buffer);
-  return utf8.includes("�") ? new TextDecoder("windows-1252").decode(buffer) : utf8;
-}

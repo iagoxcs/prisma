@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { downloadFile, formatSize } from "@/lib/attachments";
 import { dateTime } from "@/lib/format";
 import { getSupabase } from "@/lib/supabase/client";
 import { MSG_ERROR, OVERLAY, SELECT_CLASS as BASE_SELECT, TEXTAREA_CLASS, restoreFocus, trapFocus } from "@/lib/ui";
@@ -311,10 +312,6 @@ function Checklist({ taskId }: { taskId: string }) {
   );
 }
 
-function formatSize(bytes: number) {
-  return bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
-}
-
 function Attachments({ taskId, projectId }: { taskId: string; projectId: string }) {
   const { profile } = useAuth();
   const list = useQuery<Attachment[]>(
@@ -352,11 +349,9 @@ function Attachments({ taskId, projectId }: { taskId: string; projectId: string 
     list.reload();
   }
 
-  // Sempre download (RNF-04): URL assinada de curta duração com Content-Disposition: attachment.
   async function download(a: Attachment) {
-    const { data, error } = await getSupabase().storage.from(BUCKET).createSignedUrl(a.storage_path, 60, { download: a.file_name });
-    if (error || !data) return setError(error?.message ?? "Falha ao gerar o link.");
-    window.location.assign(data.signedUrl);
+    const err = await downloadFile(BUCKET, a.storage_path, a.file_name);
+    if (err) setError(err);
   }
 
   async function remove(a: Attachment) {
