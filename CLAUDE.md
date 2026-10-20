@@ -7,7 +7,7 @@ Decisões e arquitetura: `docs/ARQUITETURA.md`. Fases: `docs/ROADMAP.md`. Deploy
 Identidade visual: `docs/IDENTIDADE-VISUAL.md`.
 
 ## Stack
-Next.js (App Router) + TypeScript + Tailwind + shadcn/ui · Supabase (Auth, Postgres+RLS, Storage, Realtime, Edge Functions, pg_cron) · publicação **estática** no Netlify.
+Next.js (App Router) + TypeScript + Tailwind + shadcn/ui · Supabase (Auth, Postgres+RLS, Storage, Realtime, Edge Functions, pg_cron) · publicação **estática** na KingHost (`https://prisma.ambienteconsulta.com.br`).
 
 ## Regras (inegociáveis)
 - **Toda tabela nova nasce com `enable row level security` e policies na mesma migração.**

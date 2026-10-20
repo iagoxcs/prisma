@@ -2,7 +2,7 @@
 
 Gerenciador de Projetos Ambtech (Ambiente Consultoria) — ferramenta interna, single-tenant.
 
-Next.js (export estático) + Supabase, publicado no Netlify.
+Next.js (export estático) + Supabase, publicado na KingHost em https://prisma.ambienteconsulta.com.br.
 
 ## Começando
 ```bash
@@ -15,5 +15,5 @@ npm run dev                  # http://localhost:3000
 - [Requisitos e arquitetura (levantamento)](docs/REQUISITOS.md)
 - [Decisões de implementação e modelo de acesso](docs/ARQUITETURA.md)
 - [Roadmap / progresso](docs/ROADMAP.md)
-- [Deploy (Netlify + Supabase)](docs/DEPLOY.md)
+- [Deploy (KingHost + Supabase)](docs/DEPLOY.md)
 - Regras para o Claude Code: [CLAUDE.md](CLAUDE.md)
