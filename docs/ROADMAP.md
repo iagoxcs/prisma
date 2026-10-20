@@ -8,6 +8,7 @@ Legenda: ✅ feito · 🟡 parcial · ⬜ pendente
 - ✅ Advisors de segurança/performance tratados (restam apenas avisos esperados: helpers de RLS executáveis por `authenticated`)
 - ✅ Teste de fumaça de RLS executado no banco (gerente/consultor/externo/não-membro/anon)
 - ✅ CI (lint, typecheck, build) e workflow de deploy (Supabase + KingHost)
+- ✅ Publicado na KingHost em https://prisma.ambienteconsulta.com.br (deploy via GitHub Actions)
 - ⬜ Criar o primeiro admin (ver `DEPLOY.md`)
 - ⬜ Testes automatizados de RLS (pgTAP) e de front (Vitest) — exigidos por RNF-08
 - ⬜ Separar projetos Supabase dev/prod (hoje há um só)
