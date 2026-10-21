@@ -37,7 +37,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "escopos", label: "Escopos" },
 ];
 const DEFAULT_TAB: Tab = "quadro";
-const TASK_COLS = "id, project_id, category_id, title, description, status, assignee_id, start_date, due_date, position";
+const TASK_COLS = "id, project_id, category_id, title, description, status, assignee_id, client_owner, start_date, due_date, position";
 
 // Contexto e Escopos são só da equipe interna.
 const INTERNAL_TABS: Tab[] = ["contexto", "escopos"];

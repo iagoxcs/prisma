@@ -141,6 +141,7 @@ export function TaskImport({
       status: t.status,
       category_id: t.category_id ?? (t.new_category ? (created.get(t.new_category) ?? null) : null),
       assignee_id: t.assignee_id,
+      client_owner: t.client_owner,
       start_date: t.start_date,
       due_date: t.due_date,
       position: ++next[t.status],
@@ -221,6 +222,7 @@ export function TaskImport({
             <li><span className="font-medium text-foreground">{TEMPLATE_HEADERS.status}</span> · {Object.values(TASK_STATUS_LABEL).join(", ")}</li>
             <li><span className="font-medium text-foreground">{TEMPLATE_HEADERS.category}</span> · nome do escopo</li>
             <li><span className="font-medium text-foreground">{TEMPLATE_HEADERS.assignee}</span> · nome de um membro</li>
+            <li><span className="font-medium text-foreground">{TEMPLATE_HEADERS.client_owner}</span> · texto livre</li>
             <li><span className="font-medium text-foreground">{TEMPLATE_HEADERS.start_date}</span> e <span className="font-medium text-foreground">{TEMPLATE_HEADERS.due_date}</span> · DD/MM/AAAA</li>
             <li className="sm:col-span-2"><span className="font-medium text-foreground">{TEMPLATE_HEADERS.checklist}</span> · itens separados por <span className="num">{CHECKLIST_SEPARATOR}</span></li>
           </ul>

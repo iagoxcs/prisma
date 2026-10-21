@@ -66,6 +66,7 @@ export interface Task {
   description: string | null;
   status: TaskStatus;
   assignee_id: string | null;
+  client_owner: string | null;
   start_date: string | null;
   due_date: string | null;
   position: number;
