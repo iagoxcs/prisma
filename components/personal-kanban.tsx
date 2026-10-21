@@ -19,7 +19,7 @@ import {
 } from "@dnd-kit/core";
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { CalendarDays, GripVertical, Plus } from "lucide-react";
+import { CalendarDays, GripVertical, ListChecks, Plus, X } from "lucide-react";
 import { placeInColumn } from "@/components/project/kanban";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -27,11 +27,34 @@ import { Input } from "@/components/ui/input";
 import { shortDate } from "@/lib/format";
 import { getSupabase } from "@/lib/supabase/client";
 import { OVERDUE_BADGE, TASK_STATUS_DOT } from "@/lib/theme/status";
-import { DIALOG, MSG_ERROR, OVERLAY, restoreFocus, trapFocus } from "@/lib/ui";
+import { DIALOG, MSG_ERROR, OVERLAY, restoreFocus, TEXTAREA_CLASS, trapFocus } from "@/lib/ui";
 import { cn } from "@/lib/utils";
 import { TASK_STATUS_LABEL, todayISO, type TaskStatus } from "@/types/domain";
+import type { Json } from "@/types/database";
 
-export type PersonalTask = { id: string; title: string; status: TaskStatus; due_date: string | null; position: number };
+export type PersonalTask = {
+  id: string;
+  title: string;
+  status: TaskStatus;
+  due_date: string | null;
+  position: number;
+  notes: string | null;
+  checklist: Json;
+};
+type ChecklistItem = { id: string; text: string; done: boolean };
+
+const MAX_NOTES = 5000;
+const MAX_ITEMS = 100;
+
+// A coluna é jsonb: valida o formato ao ler, descartando o que não for item de checklist.
+function readChecklist(raw: Json): ChecklistItem[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((x) => {
+    if (!x || typeof x !== "object" || Array.isArray(x)) return [];
+    const { id, text, done } = x;
+    return typeof id === "string" && typeof text === "string" ? [{ id, text, done: done === true }] : [];
+  });
+}
 
 const COLUMNS: TaskStatus[] = ["todo", "doing", "done"];
 type Order = Record<TaskStatus, string[]>;
@@ -308,6 +331,8 @@ function TaskCard({
   overlay = false,
 }: { task: PersonalTask; status: TaskStatus; today: string; onOpen?: (id: string) => void; handle?: ReactNode; overlay?: boolean }) {
   const overdue = !!t.due_date && status !== "done" && t.due_date < today;
+  const items = readChecklist(t.checklist);
+  const doneCount = items.filter((i) => i.done).length;
   const body = (
     <>
       <span className={cn("text-[0.9375rem] font-medium", status === "done" && "text-muted-foreground")}>{t.title}</span>
@@ -320,6 +345,12 @@ function TaskCard({
             {shortDate(t.due_date)}
           </span>
         ))}
+      {items.length > 0 && (
+        <span className="num flex items-center gap-1 text-xs whitespace-nowrap text-muted-foreground">
+          <ListChecks className="size-3.5" strokeWidth={1.75} aria-hidden />
+          {doneCount}/{items.length}
+        </span>
+      )}
     </>
   );
   return (
@@ -342,10 +373,13 @@ function TaskCard({
   );
 }
 
-// Edição: título, prazo e exclusão (só da própria tarefa pessoal).
+// Edição: título, prazo, observações, checklist e exclusão (só da própria tarefa pessoal).
 function EditDialog({ task, onClose, onSaved }: { task: PersonalTask; onClose: () => void; onSaved: () => void }) {
   const [title, setTitle] = useState(task.title);
   const [due, setDue] = useState(task.due_date ?? "");
+  const [notes, setNotes] = useState(task.notes ?? "");
+  const [items, setItems] = useState(() => readChecklist(task.checklist));
+  const [newItem, setNewItem] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
@@ -357,14 +391,24 @@ function EditDialog({ task, onClose, onSaved }: { task: PersonalTask; onClose: (
     return () => restoreFocus(opener);
   }, []);
 
+  function addItem() {
+    const text = newItem.trim();
+    if (!text || items.length >= MAX_ITEMS) return;
+    setItems([...items, { id: crypto.randomUUID(), text, done: false }]);
+    setNewItem("");
+  }
+
   async function save(e: FormEvent) {
     e.preventDefault();
     if (!title.trim() || busy) return;
+    // Item digitado e ainda não confirmado entra no salvamento.
+    const pending = newItem.trim();
+    const checklist = pending && items.length < MAX_ITEMS ? [...items, { id: crypto.randomUUID(), text: pending, done: false }] : items;
     setBusy(true);
     setError(null);
     const { error } = await getSupabase()
       .from("personal_tasks")
-      .update({ title: title.trim(), due_date: due || null })
+      .update({ title: title.trim(), due_date: due || null, notes: notes.trim() || null, checklist })
       .eq("id", task.id);
     setBusy(false);
     if (error) return setError(error.message);
@@ -387,7 +431,7 @@ function EditDialog({ task, onClose, onSaved }: { task: PersonalTask; onClose: (
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className={DIALOG}
+        className={cn(DIALOG, "max-h-[90dvh] overflow-y-auto")}
         onKeyDown={(e) => {
           if (e.key === "Escape" && !confirming) onClose();
           trapFocus(e, ref.current);
@@ -402,6 +446,52 @@ function EditDialog({ task, onClose, onSaved }: { task: PersonalTask; onClose: (
           <label className="block space-y-1.5 text-sm">
             <span className="text-muted-foreground">Prazo</span>
             <Input type="date" value={due} onChange={(e) => setDue(e.target.value)} />
+          </label>
+          <fieldset className="space-y-2 text-sm">
+            <legend className="text-muted-foreground">
+              Checklist{items.length > 0 && <span className="num"> ({items.filter((i) => i.done).length}/{items.length})</span>}
+            </legend>
+            {items.length > 0 && (
+              <ul className="space-y-1">
+                {items.map((it) => (
+                  <li key={it.id} className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      aria-label={`Concluir: ${it.text}`}
+                      className="size-4 shrink-0 accent-primary"
+                      checked={it.done}
+                      onChange={() => setItems(items.map((x) => (x.id === it.id ? { ...x, done: !x.done } : x)))}
+                    />
+                    <span className={cn("min-w-0 flex-1 break-words", it.done && "text-muted-foreground line-through")}>{it.text}</span>
+                    <Button type="button" variant="ghost" size="icon-sm" aria-label={`Remover item: ${it.text}`} onClick={() => setItems(items.filter((x) => x.id !== it.id))}>
+                      <X strokeWidth={1.75} aria-hidden />
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="flex gap-2">
+              <Input
+                aria-label="Novo item do checklist"
+                placeholder="Adicionar item"
+                maxLength={200}
+                value={newItem}
+                onChange={(e) => setNewItem(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addItem();
+                  }
+                }}
+              />
+              <Button type="button" variant="outline" onClick={addItem} disabled={!newItem.trim() || items.length >= MAX_ITEMS}>
+                <Plus strokeWidth={1.75} aria-hidden /> Adicionar
+              </Button>
+            </div>
+          </fieldset>
+          <label className="block space-y-1.5 text-sm">
+            <span className="text-muted-foreground">Observações</span>
+            <textarea className={cn(TEXTAREA_CLASS, "min-h-24")} maxLength={MAX_NOTES} value={notes} onChange={(e) => setNotes(e.target.value)} />
           </label>
           {error && <p role="alert" className={MSG_ERROR}>{error}</p>}
           <div className="flex flex-wrap items-center gap-2">

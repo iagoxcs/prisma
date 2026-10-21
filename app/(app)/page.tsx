@@ -102,7 +102,7 @@ export default function DashboardPage() {
     () =>
       getSupabase()
         .from("personal_tasks")
-        .select("id, title, status, due_date, position")
+        .select("id, title, status, due_date, position, notes, checklist")
         .order("position", { ascending: true })
         .then(({ data, error }) => ({ data, error })),
     [],
