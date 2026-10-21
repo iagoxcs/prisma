@@ -166,6 +166,7 @@ function formFromTask(task: Task) {
     description: task.description ?? "",
     status: task.status,
     assignee_id: task.assignee_id ?? "",
+    client_owner: task.client_owner ?? "",
     category_id: task.category_id ?? "",
     start_date: task.start_date ?? "",
     due_date: task.due_date ?? "",
@@ -209,6 +210,7 @@ function Details({
         description: form.description || null,
         status: form.status,
         assignee_id: form.assignee_id || null,
+        client_owner: form.client_owner.trim() || null,
         category_id: form.category_id || null,
         start_date: form.start_date || null,
         due_date: form.due_date || null,
@@ -261,6 +263,10 @@ function Details({
               <option key={p.id} value={p.id}>{p.name}</option>
             ))}
           </Select>
+        </div>
+        <div className="space-y-1.5 sm:col-span-2">
+          <Label htmlFor="t-client-owner">Responsável no Cliente</Label>
+          <Input id="t-client-owner" maxLength={120} placeholder="Nome de quem acompanha no cliente" value={form.client_owner} onChange={(e) => set("client_owner", e.target.value)} />
         </div>
         <div className="space-y-1.5 sm:col-span-2">
           <Label htmlFor="t-scope">Escopo</Label>

@@ -39,6 +39,7 @@ export function tasksToCsv(ctx: Ctx): string {
       TASK_STATUS_LABEL[t.status],
       t.category_id ? (cat.get(t.category_id) ?? "") : "",
       t.assignee_id ? (who.get(t.assignee_id) ?? "") : "",
+      t.client_owner ?? "",
       t.start_date ? brDate(t.start_date) : "",
       t.due_date ? brDate(t.due_date) : "",
       (ctx.checklists.get(t.id) ?? []).map((i) => i.text.replaceAll(CHECKLIST_SEPARATOR, "/")).join(` ${CHECKLIST_SEPARATOR} `),
@@ -61,6 +62,7 @@ export function tasksToMarkdown(ctx: Ctx, title: string): string {
       const meta: [string, string | undefined][] = [
         ["Escopo", t.category_id ? cat.get(t.category_id) : undefined],
         ["Responsável", t.assignee_id ? who.get(t.assignee_id) : undefined],
+        ["Responsável no Cliente", t.client_owner?.trim() || undefined],
         ["Início", t.start_date ? brDate(t.start_date) : undefined],
         ["Prazo", t.due_date ? brDate(t.due_date) : undefined],
       ];

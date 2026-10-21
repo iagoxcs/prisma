@@ -3,7 +3,7 @@
 // ficam em branco e geram um aviso (a linha é importada mesmo assim).
 import type { Category, Person, TaskStatus } from "@/types/domain";
 
-export type TaskField = "title" | "description" | "status" | "category" | "assignee" | "start_date" | "due_date" | "checklist";
+export type TaskField = "title" | "description" | "status" | "category" | "assignee" | "client_owner" | "start_date" | "due_date" | "checklist";
 
 // Cabeçalho do modelo, na ordem em que é baixado.
 export const TEMPLATE_HEADERS: Record<TaskField, string> = {
@@ -12,6 +12,7 @@ export const TEMPLATE_HEADERS: Record<TaskField, string> = {
   status: "Status",
   category: "Escopo",
   assignee: "Responsável",
+  client_owner: "Responsável no Cliente",
   start_date: "Início",
   due_date: "Prazo",
   checklist: "Checklist",
@@ -24,6 +25,7 @@ const ALIASES: Record<TaskField, string[]> = {
   status: ["status", "situacao", "etapa"],
   category: ["escopo", "categoria", "category", "category_id"],
   assignee: ["responsavel", "assignee", "assignee_id", "atribuido a"],
+  client_owner: ["responsavel no cliente", "responsavel cliente", "client_owner", "contato no cliente"],
   start_date: ["inicio", "data de inicio", "data inicio", "start_date", "start"],
   due_date: ["prazo", "data de entrega", "entrega", "vencimento", "fim", "termino", "due_date", "due"],
   checklist: ["checklist", "itens", "subtarefas"],
@@ -58,6 +60,7 @@ export interface ParsedTask {
   category_id: string | null;
   new_category: string | null; // escopo citado que ainda não existe no projeto
   assignee_id: string | null;
+  client_owner: string | null;
   start_date: string | null;
   due_date: string | null;
   checklist: string[];
@@ -243,6 +246,7 @@ export function buildPreview(text: string, categories: Category[], people: Perso
       category_id,
       new_category,
       assignee_id,
+      client_owner: get("client_owner") || null,
       start_date,
       due_date,
       checklist,
@@ -262,6 +266,7 @@ export function templateCsv(): string {
     "A Fazer",
     "Diagnóstico",
     "",
+    "Maria (RH do cliente)",
     "01/11/2026",
     "15/11/2026",
     "Agendar entrevistas | Consolidar anotações",
