@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
-import { Bell, BookOpen, Briefcase, Building2, CalendarRange, FileText, LayoutDashboard, LogOut, Settings } from "lucide-react";
+import { Bell, BookOpen, Briefcase, Building2, CalendarRange, ChartColumn, FileText, LayoutDashboard, LogOut, Settings } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import { NotificationBell } from "@/components/notification-bell";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -17,6 +17,7 @@ const NAV = [
   { href: "/", label: "Painel", icon: LayoutDashboard },
   { href: "/projetos/", label: "Projetos", icon: Briefcase },
   { href: "/cronograma/", label: "Cronograma", icon: CalendarRange },
+  { href: "/indicadores/", label: "Indicadores", icon: ChartColumn, internalOnly: true },
   { href: "/documentos/", label: "Documentos", icon: FileText, internalOnly: true },
   { href: "/conhecimento/", label: "Conhecimento", icon: BookOpen, internalOnly: true },
   { href: "/notificacoes/", label: "Notificações", icon: Bell },
