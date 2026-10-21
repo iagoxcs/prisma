@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 import { ROLE_LABEL } from "@/types/domain";
 
 const NAV = [
-  { href: "/", label: "Painel", icon: LayoutDashboard },
+  { href: "/", label: "Meu painel", icon: LayoutDashboard },
   { href: "/projetos/", label: "Projetos", icon: Briefcase },
   { href: "/cronograma/", label: "Cronograma", icon: CalendarRange },
   { href: "/indicadores/", label: "Indicadores", icon: ChartColumn, internalOnly: true },
@@ -67,7 +67,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     <div className="flex min-h-screen gap-5 p-3 md:p-5">
       {/* Painel de navegação: lâmina de vidro (glass-painel) */}
       <aside className="glass-painel sticky top-5 hidden h-[calc(100vh-2.5rem)] w-60 shrink-0 flex-col p-4 md:flex">
-        <Link href="/" className="mb-7 block px-2 pt-1" aria-label="Prisma, ir para o Painel">
+        <Link href="/" className="mb-7 block px-2 pt-1" aria-label="Prisma, ir para o Meu painel">
           <PrismaWordmark />
           <span className="mt-1 block truncate pl-[2.45rem] text-[0.8125rem] font-medium text-muted-foreground">{ORG_NAME}</span>
         </Link>

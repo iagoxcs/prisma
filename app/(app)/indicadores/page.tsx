@@ -116,7 +116,7 @@ export default function IndicatorsPage() {
           <div className="space-y-1">
             <p className="font-medium">Sem acesso aos indicadores</p>
             <p className="text-sm text-muted-foreground">
-              Os indicadores consolidados são internos. Você continua vendo suas tarefas no Painel e nos projetos para os quais foi convidado.
+              Os indicadores consolidados são internos. Você continua vendo suas tarefas no Meu painel e nos projetos para os quais foi convidado.
             </p>
           </div>
         </div>

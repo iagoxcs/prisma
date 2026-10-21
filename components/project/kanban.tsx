@@ -69,13 +69,14 @@ function useReducedMotion() {
 
 // Nova position do item movido, considerando TODAS as tarefas da coluna (`full`, sem o item, ordenada),
 // a partir dos vizinhos visíveis na ordem final (`visible`, com o item). Se o espaço acabar, renumera a coluna.
-function placeInColumn(full: Task[], visible: string[], movedId: string): { position: number; renumber?: string[] } {
+export function placeInColumn(full: { id: string; position: number }[], visible: string[], movedId: string): { position: number; renumber?: string[] } {
+  type Item = (typeof full)[number];
   if (full.length === 0) return { position: 1 };
   const idx = visible.indexOf(movedId);
   const prevVis = visible[idx - 1];
   const nextVis = visible[idx + 1];
-  let before: Task | undefined;
-  let after: Task | undefined;
+  let before: Item | undefined;
+  let after: Item | undefined;
   if (prevVis) {
     const i = full.findIndex((t) => t.id === prevVis);
     [before, after] = [full[i], full[i + 1]];

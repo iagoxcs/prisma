@@ -434,6 +434,47 @@ export type Database = {
           },
         ]
       }
+      personal_tasks: {
+        Row: {
+          created_at: string
+          due_date: string | null
+          id: string
+          owner_id: string
+          position: number
+          status: Database["public"]["Enums"]["task_status"]
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          due_date?: string | null
+          id?: string
+          owner_id?: string
+          position?: number
+          status?: Database["public"]["Enums"]["task_status"]
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          due_date?: string | null
+          id?: string
+          owner_id?: string
+          position?: number
+          status?: Database["public"]["Enums"]["task_status"]
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "personal_tasks_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           active: boolean
