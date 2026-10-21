@@ -7,6 +7,7 @@ import { useQuery } from "@/lib/use-query";
 import { todayISO, type Task } from "@/types/domain";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PersonalKanban, type PersonalTask } from "@/components/personal-kanban";
 import { ErrorState } from "@/components/ui/error-state";
 import { SkeletonList } from "@/components/ui/skeleton";
 import { shortDate } from "@/lib/format";
@@ -97,6 +98,16 @@ export default function DashboardPage() {
     [profile?.id, limit],
   );
 
+  const personal = useQuery<PersonalTask[]>(
+    () =>
+      getSupabase()
+        .from("personal_tasks")
+        .select("id, title, status, due_date, position")
+        .order("position", { ascending: true })
+        .then(({ data, error }) => ({ data, error })),
+    [],
+  );
+
   const rows = tasks.data?.rows ?? [];
   const grouped = new Map<Group, MyTask[]>(GROUPS.map((g) => [g, []]));
   for (const t of rows) {
@@ -122,7 +133,7 @@ export default function DashboardPage() {
       )}
 
       <section className="space-y-4">
-        <h2>Minhas tarefas</h2>
+        <h2>Minhas Tarefas - Projetos</h2>
         {tasks.loading ? (
           <SkeletonList variant="card" count={2} label="Carregando suas tarefas…" />
         ) : tasks.error ? (
@@ -174,6 +185,17 @@ export default function DashboardPage() {
               </Card>
             ))}
           </>
+        )}
+      </section>
+
+      <section className="space-y-4">
+        <h2>Minhas Tarefas</h2>
+        {personal.loading ? (
+          <SkeletonList variant="card" count={2} label="Carregando suas tarefas pessoais…" />
+        ) : personal.error ? (
+          <ErrorState what="suas tarefas pessoais" detail={personal.error} onRetry={personal.reload} />
+        ) : (
+          <PersonalKanban tasks={personal.data ?? []} onChanged={personal.reload} />
         )}
       </section>
     </div>
