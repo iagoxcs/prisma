@@ -436,9 +436,11 @@ export type Database = {
       }
       personal_tasks: {
         Row: {
+          checklist: Json
           created_at: string
           due_date: string | null
           id: string
+          notes: string | null
           owner_id: string
           position: number
           status: Database["public"]["Enums"]["task_status"]
@@ -446,9 +448,11 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          checklist?: Json
           created_at?: string
           due_date?: string | null
           id?: string
+          notes?: string | null
           owner_id?: string
           position?: number
           status?: Database["public"]["Enums"]["task_status"]
@@ -456,9 +460,11 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          checklist?: Json
           created_at?: string
           due_date?: string | null
           id?: string
+          notes?: string | null
           owner_id?: string
           position?: number
           status?: Database["public"]["Enums"]["task_status"]
