@@ -8,7 +8,8 @@ import { brDate } from "@/lib/format";
 import { getSupabase } from "@/lib/supabase/client";
 import { CATEGORY_PALETTE } from "@/lib/theme/status";
 import { buildPreview, CHECKLIST_SEPARATOR, readCsvFile, TEMPLATE_HEADERS, templateCsv, type ImportPreview } from "@/lib/task-csv";
-import { MSG_ERROR, MSG_OK, SELECT_CLASS } from "@/lib/ui";
+import { TaskExport } from "@/components/project/task-export";
+import { MSG_ERROR, MSG_OK, SEGMENT_ITEM, SELECT_CLASS } from "@/lib/ui";
 import { useQuery } from "@/lib/use-query";
 import { TASK_STATUS_LABEL, type Category, type Person, type Task, type TaskStatus } from "@/types/domain";
 import { Select } from "@/components/ui/select";
@@ -25,6 +26,10 @@ export function TaskImport({
   categories,
   people,
   canManageScopes,
+  canImport,
+  filteredTasks,
+  filtering,
+  initialTab,
   onClose,
   onImported,
 }: {
@@ -33,9 +38,14 @@ export function TaskImport({
   categories: Category[];
   people: Person[];
   canManageScopes: boolean;
+  canImport: boolean;
+  filteredTasks: Task[];
+  filtering: boolean;
+  initialTab: "import" | "export";
   onClose: () => void;
   onImported: () => void;
 }) {
+  const [tab, setTab] = useState<"import" | "export">(canImport ? initialTab : "export");
   const [fileName, setFileName] = useState("");
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [busy, setBusy] = useState(false);
@@ -176,18 +186,31 @@ export function TaskImport({
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="Importar tarefas"
+        aria-label="Importar e exportar tarefas"
         className="min-h-full w-full max-w-2xl space-y-6 border-glass-edge bg-popover p-6 text-popover-foreground shadow-[var(--glass-shadow)] md:min-h-0 md:rounded-2xl md:border md:p-7"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">
-          <h2>Importar tarefas</h2>
+          <h2>Importar / Exportar</h2>
           <Button variant="ghost" size="icon" aria-label="Fechar" disabled={busy} onClick={onClose}>
             <X strokeWidth={1.75} />
           </Button>
         </div>
 
-        <div className="space-y-3 text-sm">
+        <div role="tablist" aria-label="Importar ou exportar" className="flex gap-2">
+          {canImport && (
+            <button type="button" role="tab" aria-selected={tab === "import"} disabled={busy} className={SEGMENT_ITEM} onClick={() => setTab("import")}>
+              Importar
+            </button>
+          )}
+          <button type="button" role="tab" aria-selected={tab === "export"} disabled={busy} className={SEGMENT_ITEM} onClick={() => setTab("export")}>
+            Exportar
+          </button>
+        </div>
+
+        {tab === "export" && <TaskExport tasks={tasks} filtered={filteredTasks} filtering={filtering} categories={categories} people={people} />}
+
+        <div className={tab === "import" ? "space-y-3 text-sm" : "hidden"}>
           <p>
             Envie um arquivo CSV com uma tarefa por linha. Só a coluna <strong>Título</strong> é obrigatória; as demais são
             opcionais e podem estar em qualquer ordem.
@@ -226,7 +249,7 @@ export function TaskImport({
           )}
         </div>
 
-        {preview && (
+        {tab === "import" && preview && (
           <div className="space-y-4 text-sm">
             <p className="font-medium">
               {preview.tasks.length} tarefa(s) prontas para importar
@@ -276,14 +299,16 @@ export function TaskImport({
           </div>
         )}
 
-        {error && <p role="alert" className={MSG_ERROR}>{error}</p>}
-        {done && <p role="status" className={MSG_OK}>{done}</p>}
+        {tab === "import" && error && <p role="alert" className={MSG_ERROR}>{error}</p>}
+        {tab === "import" && done && <p role="status" className={MSG_OK}>{done}</p>}
 
         <div className="flex justify-end gap-2">
-          <Button type="button" variant="ghost" disabled={busy} onClick={onClose}>{done ? "Fechar" : "Cancelar"}</Button>
-          <Button type="button" disabled={busy || !preview || preview.tasks.length === 0} onClick={run}>
-            {busy ? "Importando…" : `Importar ${preview?.tasks.length ?? 0} tarefa(s)`}
-          </Button>
+          <Button type="button" variant="ghost" disabled={busy} onClick={onClose}>{done || tab === "export" ? "Fechar" : "Cancelar"}</Button>
+          {tab === "import" && (
+            <Button type="button" disabled={busy || !preview || preview.tasks.length === 0} onClick={run}>
+              {busy ? "Importando…" : `Importar ${preview?.tasks.length ?? 0} tarefa(s)`}
+            </Button>
+          )}
         </div>
       </div>
     </div>,
