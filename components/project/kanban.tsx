@@ -19,7 +19,7 @@ import {
 } from "@dnd-kit/core";
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { CalendarDays, GripVertical, Plus, Upload } from "lucide-react";
+import { ArrowDownUp, CalendarDays, GripVertical, Plus } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/components/auth-provider";
 import { TaskImport } from "@/components/project/task-import";
@@ -328,11 +328,9 @@ export function Kanban({
             <Button type="submit">Adicionar</Button>
           </form>
         )}
-        {canCreate && (
-          <Button type="button" variant="outline" onClick={() => setImporting(true)}>
-            <Upload strokeWidth={1.75} aria-hidden /> Importar CSV
-          </Button>
-        )}
+        <Button type="button" variant="outline" onClick={() => setImporting(true)}>
+          <ArrowDownUp strokeWidth={1.75} aria-hidden /> Importar / Exportar
+        </Button>
         <Select aria-label="Filtrar por responsável" className={SELECT_CLASS} value={filterAssignee} onChange={(e) => setParams({ assignee: e.target.value || null })}>
           <option value="">Todos os responsáveis</option>
           {people.map((p) => (
@@ -370,6 +368,10 @@ export function Kanban({
           categories={categories}
           people={people}
           canManageScopes={canManageScopes}
+          canImport={canCreate}
+          initialTab="import"
+          filtering={filtering}
+          filteredTasks={tasks.filter(matches)}
           onClose={() => setImporting(false)}
           onImported={onChanged}
         />
