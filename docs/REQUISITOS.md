@@ -73,7 +73,7 @@ Princípios:
 - **Segurança no banco:** toda regra de acesso vive em RLS, não no front-end.
 - **Mutações da IA com a identidade do usuário:** o gateway repassa o JWT de quem acionou, então a IA nunca enxerga ou altera mais do que o próprio usuário.
 - **Migrações versionadas:** nenhuma alteração de schema direto no painel do Supabase.
-- **Ambientes separados:** projetos Supabase distintos para dev e prod.
+- **Um único projeto Supabase (produção):** testes rodam na stack local (`supabase start`), nunca no projeto remoto.
 
 ---
 
@@ -107,9 +107,9 @@ Princípios:
 
 | ID | Requisito |
 |---|---|
-| RF-13 | Todos os colaboradores da organização têm acesso à IA. |
-| RF-14 | A IA cria e atualiza tarefas por comando. |
-| RF-15 | A IA consulta a base de conhecimento da empresa e os dados dos projetos para apoiar decisões e relatórios. |
+| RF-13 | Colaboradores internos acionam a IA pelo Discord. |
+| RF-14 | A IA cria e atualiza tarefas por comando no Discord, com confirmação em duas fases. |
+| RF-15 | A IA consulta o contexto dos projetos (`project_context_entries`, inclusive resumos diários do Discord) e as metodologias (`knowledge_items`). |
 | RF-16 | Toda ação de escrita feita pela IA é registrada em log de auditoria. |
 
 ### 4.4 Notificações
@@ -211,19 +211,19 @@ Modelo adotado:
 
 | Aspecto | Definição |
 |---|---|
-| Identidade | A IA opera com o JWT do usuário que a acionou; o RLS se aplica normalmente. |
+| Identidade | Usuário identificado pelo provedor Discord do Supabase Auth; a IA opera com a sessão desse usuário e o RLS se aplica normalmente. |
+| Sessão | Obtida dentro do `ai-gateway`; o token do usuário não sai do Supabase. |
+| Quem aciona | Apenas colaboradores internos; terceiros (`externo`) não acionam a IA. |
 | Ponto de entrada | Edge Function `ai-gateway`, única porta entre o agente e o banco. |
 | Ferramentas expostas | `list_projects`, `list_tasks`, `get_task`, `create_task`, `update_task`, `add_comment`, `generate_report`. |
 | Exclusões | Sem SQL arbitrário, sem exclusão de dados, sem alteração de perfis e permissões. |
 | Auditoria | Cada chamada de escrita gera registro em `ai_actions_log`. |
-| Confirmação | Criação e atualização em lote exigem confirmação do usuário na interface antes de gravar. |
+| Confirmação | Toda escrita é confirmada no Discord com código de uso único antes de gravar. |
 
 ### 8.2 Base de conhecimento
 
-O local e o formato da base de conhecimento ainda não estão definidos (seção 12). A arquitetura prevê duas alternativas:
-
-- **Dentro do Supabase:** tabela de documentos com `pgvector` para busca semântica.
-- **Externa:** repositório mantido pelo próprio agente, consultado por ele.
+- **No Supabase, sob RLS:** contexto dos projetos em `project_context_entries` e metodologias em `knowledge_items`.
+- **Git apenas para o Hermes:** a pasta `hermes/` versiona configuração e skills do agente, não conteúdo da base.
 
 ---
 
@@ -298,12 +298,12 @@ Fluxo com Claude Code:
 | # | Pergunta | Impacto |
 |---|---|---|
 | 1 | O que é uma "ação" nos relatórios (RF-03)? É uma tarefa, um grupo de tarefas ou uma entidade própria? | Modelo de dados e geração de relatórios |
-| 2 | A IA deve respeitar as permissões de cada usuário (modelo da seção 8) ou ter acesso total conforme o requisito original? | Segurança e arquitetura do gateway |
-| 3 | Terceiros (`externo`) podem acionar a IA? | Matriz de permissões |
-| 4 | Onde fica a base de conhecimento e qual o volume e formato dos documentos? | Pgvector vs. repositório externo |
-| 5 | Como o agente Hermes é hospedado e quem o opera? | Autenticação e contrato do gateway |
+| 2 | ✅ **Resolvida:** a IA respeita as permissões de cada usuário (modelo da seção 8). | Segurança e arquitetura do gateway |
+| 3 | ✅ **Resolvida:** terceiros (`externo`) não acionam a IA. | Matriz de permissões |
+| 4 | ✅ **Resolvida:** base de conhecimento no Supabase, sob RLS (seção 8.2). | Pgvector vs. repositório externo |
+| 5 | ✅ **Resolvida:** Hermes hospedado em VPS, operada por Iago Oliveira. | Autenticação e contrato do gateway |
 | 6 | Quais indicadores da seção 9.2 entram na v1 e há outros necessários? Há metas por indicador? | Views e painéis |
-| 7 | Provedor de login dos internos: Google Workspace ou Microsoft 365? | Configuração do Auth |
+| 7 | ✅ **Resolvida:** e-mail/senha + Discord (vinculação automática por e-mail verificado ou manual em `/conta/`). | Configuração do Auth |
 | 8 | Como terceiros são convidados e quem os aprova? | Fluxo de onboarding externo |
 | 9 | Anexos de qualquer formato exigem varredura de malware? | Pipeline de upload |
 | 10 | Os relatórios HTML precisam seguir um padrão visual já existente da Ambiente? | Templates de relatório |

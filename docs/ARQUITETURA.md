@@ -18,14 +18,29 @@ Complementa `REQUISITOS.md` (v1.0). Aqui ficam as decisões de implementação t
 ## Camadas
 
 ```
-Navegador (site estático na KingHost: prisma.ambienteconsulta.com.br)
-   │ supabase-js (JWT do usuário)           │ chamadas à IA (Fase 4)
-   ▼                                        ▼
-Supabase: Auth · Postgres (RLS) · Storage · Realtime      Edge Function ai-gateway
-                                                           (repassa o JWT; ferramentas restritas)
+Navegador (site estático na KingHost)        Discord (canal por projeto)
+   │ supabase-js (JWT do usuário)               │
+   │                                            ▼
+   │                                 VPS: Hermes · fachada MCP · rotina diária
+   │                                            │
+   │                                            ▼
+   │                                 Edge Function ai-gateway
+   │                                 (sessão do usuário obtida aqui; ferramentas restritas)
+   ▼                                            ▼
+Supabase: Auth · Postgres (RLS) · Storage · Realtime
 ```
 
 Toda autorização está no banco. O `AppShell` redireciona para `/login/` apenas por UX.
+
+Cada projeto tem um canal no Discord (`projects.discord_channel_id`); a rotina diária resume o canal e grava o resumo em `project_context_entries`.
+
+Desde 05/10/2026 os JWT são assinados em ES256. A chave HS256 anterior fica mantida até a migração das chaves de API.
+
+### Exceções ao modelo de identidade
+
+| Credencial | Uso | Restrição |
+|---|---|---|
+| `ROUTINE_SECRET` (rotina diária) | Chamar o `ai-gateway` sem sessão de usuário | Só lista canais e grava contexto |
 
 ## Modelo de acesso (RLS)
 
