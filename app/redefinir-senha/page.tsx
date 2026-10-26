@@ -12,6 +12,27 @@ import { Label } from "@/components/ui/label";
 
 const MIN_PASSWORD = 10; // = minimum_password_length do Auth
 
+// k-anonimato do Have I Been Pwned: só os 5 primeiros caracteres do SHA-1 saem do navegador.
+// Add-Padding acrescenta sufixos falsos com contagem 0. Falha ou timeout = não bloqueia (fail-open).
+async function isPwned(password: string): Promise<boolean> {
+  try {
+    const digest = await crypto.subtle.digest("SHA-1", new TextEncoder().encode(password));
+    const hash = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("").toUpperCase();
+    const res = await fetch(`https://api.pwnedpasswords.com/range/${hash.slice(0, 5)}`, {
+      headers: { "Add-Padding": "true" },
+      signal: AbortSignal.timeout(3000),
+    });
+    if (!res.ok) return false;
+    const suffix = hash.slice(5);
+    return (await res.text()).split("\n").some((line) => {
+      const [s, count] = line.trim().split(":");
+      return s === suffix && Number(count) > 0;
+    });
+  } catch {
+    return false;
+  }
+}
+
 export default function RedefinirSenhaPage() {
   return (
     <AuthCard subtitle="Definir nova senha">
@@ -57,6 +78,10 @@ function ResetForm() {
     if (password !== confirm) return setError("As senhas não conferem.");
     setBusy(true);
     setError(null);
+    if (await isPwned(password)) {
+      setBusy(false);
+      return setError("Esta senha aparece em vazamentos conhecidos. Escolha outra.");
+    }
     const { error } = await getSupabase().auth.updateUser({ password });
     setBusy(false);
     if (error) setError(error.code === "same_password" ? "Escolha uma senha diferente da atual." : "Não foi possível salvar a senha. Tente de novo.");
