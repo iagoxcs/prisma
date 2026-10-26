@@ -13,6 +13,34 @@ const ROLES = ["admin", "gerente", "lider", "consultor", "externo"];
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
 
+const PWNED_MSG = "Esta senha aparece em vazamentos conhecidos. Escolha outra.";
+
+// Have I Been Pwned por k-anonimato: só os 5 primeiros hex do SHA-1 saem daqui.
+// Falha ou timeout → false (fail-open); senha e hash nunca vão para log.
+async function isPwned(password: string): Promise<boolean> {
+  try {
+    const digest = await crypto.subtle.digest("SHA-1", new TextEncoder().encode(password));
+    const hash = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("").toUpperCase();
+    const suffix = hash.slice(5);
+    const res = await fetch(`https://api.pwnedpasswords.com/range/${hash.slice(0, 5)}`, {
+      headers: { "Add-Padding": "true" },
+      signal: AbortSignal.timeout(3000),
+    });
+    if (!res.ok) {
+      console.warn(`HIBP indisponível (HTTP ${res.status}); seguindo sem a checagem`);
+      return false;
+    }
+    for (const line of (await res.text()).split("\n")) {
+      const [s, count] = line.trim().split(":");
+      if (s === suffix) return Number(count) > 0;
+    }
+    return false;
+  } catch (e) {
+    console.warn(`HIBP falhou (${e instanceof Error ? e.name : "erro"}); seguindo sem a checagem`);
+    return false;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "método não permitido" }, 405);
@@ -55,6 +83,7 @@ Deno.serve(async (req) => {
     const role = body.role ?? "consultor";
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json({ error: "e-mail inválido" }, 400);
     if (!ROLES.includes(role)) return json({ error: "perfil inválido" }, 400);
+    if (await isPwned(password)) return json({ error: PWNED_MSG }, 400);
 
     const { data, error } = await admin.auth.admin.createUser({
       email,
@@ -74,6 +103,7 @@ Deno.serve(async (req) => {
 
   if (body.action === "reset_password") {
     if (!body.user_id) return json({ error: "user_id obrigatório" }, 400);
+    if (await isPwned(password)) return json({ error: PWNED_MSG }, 400);
     const { error } = await admin.auth.admin.updateUserById(body.user_id, { password });
     if (error) return json({ error: error.message }, 400);
     return json({ ok: true });
