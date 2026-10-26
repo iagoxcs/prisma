@@ -47,7 +47,14 @@ Legenda: ✅ feito · 🟡 parcial · ⬜ pendente
 - ⬜ Parâmetros futuros conforme as fases 4–5 (IA, metas de indicadores)
 
 ## Fase 4 — IA (RF-03–05, 13–16)
-`ai-gateway`, ferramentas restritas, auditoria, relatórios HTML. Depende das validações 1–5 e 10.
+- ⬜ Etapa 0 — Preparação
+- ⬜ Etapa 1 — VPS e Hermes
+- ⬜ Etapa 2 — Login com Discord
+- ⬜ Etapa 3 — Gateway de leitura
+- ⬜ Etapa 4 — Canal por projeto e rotina diária
+- ⬜ Etapa 5 — Escrita com confirmação
+- ⬜ Etapa 6 — Áudio
+- ⬜ Trilha paralela — Migração das chaves de API
 
 ## Fase 5 — Indicadores (RF-23–26)
 Views `security_invoker`, painéis Recharts, filtros, exportação HTML. Depende da validação nº 6.
