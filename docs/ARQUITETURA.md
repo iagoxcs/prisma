@@ -55,6 +55,27 @@ Helpers `security definer` (em `20261005000100_foundation.sql`) evitam recursão
 | `consultor` | Onde é membro | Cria; edita as atribuídas a si | Leitura |
 | `externo` | Somente onde foi incluído | Somente atribuídas ou compartilhadas; sem comentários internos | Sem acesso |
 
+A tabela acima é o **padrão de fábrica**. Desde `20261109120000_role_permissions.sql`, parte dela é configurável em Configurações → Perfis e permissões. Essa parte fica na tabela `role_permissions` (perfil × capacidade), e as policies a consultam via `role_can(perm)`.
+
+**Capacidades configuráveis:**
+- `project.create`
+- `scope.manage`
+- `task.create` (cobre tarefas e relatórios)
+- `task.edit_any`
+- `task.delete`
+- `clients.view`
+- `clients.manage`
+- `knowledge.manage`
+
+As capacidades de projeto valem nos projetos de que o usuário é membro.
+
+**Regras fixas:**
+- `admin` sempre tem tudo, e `externo` nunca recebe capacidade. Um trigger bloqueia a edição dessas duas linhas, e as policies de clientes exigem também `is_internal()`.
+- O gestor do projeto (`manager_id`) tem tudo no próprio projeto.
+- A visibilidade de projetos e tarefas, os comentários internos e Configurações não passam por `role_can`.
+
+Toda alteração entra no `activity_log`.
+
 Pontos de atenção:
 - `profiles`: usuários só editam `name`/`job_title` (grant por coluna). Perfil/ativação: `admin_update_profile()`.
 - `notifications`: usuário só altera `read`; criação por triggers (`notify_task_assigned`, `notify_comment`) e, futuramente, `pg_cron`.

@@ -724,6 +724,38 @@ export type Database = {
           },
         ]
       }
+      role_permissions: {
+        Row: {
+          allowed: boolean
+          permission: string
+          role: Database["public"]["Enums"]["user_role"]
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          allowed?: boolean
+          permission: string
+          role: Database["public"]["Enums"]["user_role"]
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          allowed?: boolean
+          permission?: string
+          role?: Database["public"]["Enums"]["user_role"]
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "role_permissions_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       reports: {
         Row: {
           created_at: string
@@ -1216,6 +1248,7 @@ export type Database = {
       is_project_manager: { Args: { pid: string }; Returns: boolean }
       is_project_member: { Args: { pid: string }; Returns: boolean }
       knowledge_item_id: { Args: { object_name: string }; Returns: string }
+      role_can: { Args: { perm: string }; Returns: boolean }
       shares_project_with: { Args: { other: string }; Returns: boolean }
     }
     Enums: {

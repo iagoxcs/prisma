@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { PERMISSIONS } from "@/lib/permissions";
 import { getSupabase } from "@/lib/supabase/client";
+import { ROLE_LABEL, type UserRole } from "@/types/domain";
 import { dateTime } from "@/lib/format";
 import { MSG_ERROR, ROW_LIST, SELECT_CLASS } from "@/lib/ui";
 import { useQuery } from "@/lib/use-query";
@@ -22,12 +24,18 @@ const ENTITY_LABEL: Record<string, string> = {
   tasks: "Tarefa",
   project_members: "Membro de projeto",
   app_settings: "Parâmetro",
+  role_permissions: "Permissão de perfil",
 };
 const ACTION_LABEL: Record<string, string> = { insert: "criou", update: "alterou", delete: "excluiu" };
 const IGNORED = new Set(["updated_at", "created_at", "concluded_at", "position"]);
 
 function describe(r: LogRow) {
   const row = (r.diff?.new ?? r.diff?.old ?? {}) as Record<string, unknown>;
+  if (r.entity === "role_permissions") {
+    const label = PERMISSIONS.find((p) => p.key === row.permission)?.label ?? String(row.permission);
+    const role = ROLE_LABEL[row.role as UserRole] ?? String(row.role);
+    return `${role} · ${label}: ${row.allowed ? "permitido" : "não permitido"}`;
+  }
   const title = (row.title ?? row.name ?? row.key ?? "") as string;
   if (r.action !== "update" || !r.diff?.old || !r.diff.new) return title;
   const changed = Object.keys(r.diff.new).filter((k) => !IGNORED.has(k) && JSON.stringify(r.diff!.old![k]) !== JSON.stringify(r.diff!.new![k]));

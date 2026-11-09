@@ -73,8 +73,8 @@ function ItemDetalhe() {
   const router = useRouter();
   const pathname = usePathname();
   const id = params.get("id") ?? "";
-  const { profile } = useAuth();
-  const canManage = profile?.role === "admin" || profile?.role === "gerente";
+  const { can } = useAuth();
+  const canManage = can("knowledge.manage");
   const editing = canManage && params.get("edit") === "1";
 
   const item = useQuery<Item>(

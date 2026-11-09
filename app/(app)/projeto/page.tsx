@@ -52,7 +52,7 @@ function ProjetoDetalhe() {
   const pathname = usePathname();
   const id = params.get("id") ?? "";
   const taskParam = params.get("task");
-  const { profile } = useAuth();
+  const { profile, can } = useAuth();
   const rawTab = params.get("tab");
   const allowedTabs = tabsFor(profile?.is_external ?? false);
   const tab = allowedTabs.find((t) => t.id === rawTab)?.id ?? DEFAULT_TAB;
@@ -156,7 +156,7 @@ function ProjetoDetalhe() {
   if (!p || !profile) return <p className="text-sm">Projeto não encontrado ou sem acesso.</p>;
 
   const isManager = profile.role === "admin" || p.manager_id === profile.id;
-  const canManageScopes = isManager || profile.role === "lider";
+  const canManageScopes = isManager || can("scope.manage");
   const overdue = !!p.end_date && p.end_date < todayISO() && p.status !== "concluido" && p.status !== "cancelado";
 
   return (
@@ -230,7 +230,14 @@ function ProjetoDetalhe() {
           />
         )}
         {tab === "lista" && !tasks.loading && !tasks.error && (
-          <TaskList tasks={tasks.data ?? []} categories={categories.data ?? []} people={people.data ?? []} onOpen={setOpenId} />
+          <TaskList
+            tasks={tasks.data ?? []}
+            categories={categories.data ?? []}
+            people={people.data ?? []}
+            onOpen={setOpenId}
+            canBulkDelete={profile.role === "admin"}
+            onChanged={tasks.reload}
+          />
         )}
         {tab === "cronograma" && !tasks.loading && !tasks.error && <GanttChart rows={ganttRows} onSelect={setOpenId} />}
         {tab === "documentos" && <DocumentIndex projectId={id} />}
