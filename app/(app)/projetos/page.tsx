@@ -41,7 +41,7 @@ function readStoredSize() {
 }
 
 function ProjetosLista() {
-  const { profile } = useAuth();
+  const { profile, can } = useAuth();
   const params = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -53,7 +53,7 @@ function ProjetosLista() {
   const [error, setError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const canCreate = profile?.role === "admin" || profile?.role === "gerente";
+  const canCreate = can("project.create");
 
   const [version, setVersion] = useState(0);
   const isExternal = profile?.is_external ?? true;

@@ -30,9 +30,9 @@ type Card = Pick<KnowledgeItem, "id" | "title" | "kind" | "tags" | "summary" | "
 const COLS = "id, title, kind, tags, summary, status, updated_at, methodology:methodology_id(title)";
 
 export default function ConhecimentoPage() {
-  const { profile } = useAuth();
+  const { can } = useAuth();
   const router = useRouter();
-  const canManage = profile?.role === "admin" || profile?.role === "gerente";
+  const canManage = can("knowledge.manage");
 
   const [termInput, setTermInput] = useState("");
   const [term, setTerm] = useState("");

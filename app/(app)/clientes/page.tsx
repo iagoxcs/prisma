@@ -10,11 +10,11 @@ import { cn } from "@/lib/utils";
 import type { Client } from "@/types/domain";
 
 export default function ClientesPage() {
-  const { profile } = useAuth();
+  const { can } = useAuth();
   const [clients, setClients] = useState<Client[]>([]);
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const canWrite = profile?.role === "admin" || profile?.role === "gerente";
+  const canWrite = can("clients.manage");
 
   const [version, setVersion] = useState(0);
 

@@ -9,6 +9,7 @@ import { NotificationBell } from "@/components/notification-bell";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { PrismaMark, PrismaWordmark } from "@/components/brand/prisma-mark";
 import { Button } from "@/components/ui/button";
+import type { Permission } from "@/lib/permissions";
 import { ORG_NAME } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 import { ROLE_LABEL } from "@/types/domain";
@@ -21,13 +22,13 @@ const NAV = [
   { href: "/documentos/", label: "Documentos", icon: FileText, internalOnly: true },
   { href: "/conhecimento/", label: "Conhecimento", icon: BookOpen, internalOnly: true },
   { href: "/notificacoes/", label: "Notificações", icon: Bell },
-  { href: "/clientes/", label: "Clientes", icon: Building2, internalOnly: true },
+  { href: "/clientes/", label: "Clientes", icon: Building2, internalOnly: true, perm: "clients.view" },
   { href: "/configuracoes/", label: "Configurações", icon: Settings, internalOnly: true, adminOnly: true },
-] as { href: string; label: string; icon: typeof Bell; internalOnly?: boolean; adminOnly?: boolean }[];
+] as { href: string; label: string; icon: typeof Bell; internalOnly?: boolean; adminOnly?: boolean; perm?: Permission }[];
 
 // O gate é só UX: a segurança real é o RLS no banco.
 export function AppShell({ children }: { children: ReactNode }) {
-  const { loading, session, profile, signOut } = useAuth();
+  const { loading, session, profile, can, signOut } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
 
@@ -60,7 +61,9 @@ export function AppShell({ children }: { children: ReactNode }) {
     );
   }
 
-  const items = NAV.filter((i) => (!i.internalOnly || !profile.is_external) && (!i.adminOnly || profile.role === "admin"));
+  const items = NAV.filter(
+    (i) => (!i.internalOnly || !profile.is_external) && (!i.adminOnly || profile.role === "admin") && (!i.perm || can(i.perm)),
+  );
   const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href.replace(/\/$/, "")));
 
   return (

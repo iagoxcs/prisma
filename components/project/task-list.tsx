@@ -1,12 +1,15 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ArrowDown, ArrowUp } from "lucide-react";
+import { ArrowDown, ArrowUp, Trash2, X } from "lucide-react";
 import { Pagination } from "@/components/pagination";
+import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
+import { getSupabase } from "@/lib/supabase/client";
 import { shortDate } from "@/lib/format";
 import { categoryColor, OVERDUE_BADGE, TASK_STATUS_DOT } from "@/lib/theme/status";
-import { SELECT_CLASS } from "@/lib/ui";
+import { MSG_ERROR, SELECT_CLASS } from "@/lib/ui";
 import { usePageSize } from "@/lib/use-page-size";
 import { cn } from "@/lib/utils";
 import { TASK_STATUS_LABEL, todayISO, type Category, type Person, type Task, type TaskStatus } from "@/types/domain";
@@ -32,11 +35,16 @@ export function TaskList({
   categories,
   people,
   onOpen,
+  canBulkDelete = false,
+  onChanged,
 }: {
   tasks: Task[];
   categories: Category[];
   people: Person[];
   onOpen: (id: string) => void;
+  /** Seleção múltipla e exclusão em lote (só administradores; o banco também valida via RLS). */
+  canBulkDelete?: boolean;
+  onChanged?: () => void;
 }) {
   const [search, setSearch] = useState("");
   const [assignee, setAssignee] = useState("");
@@ -45,6 +53,10 @@ export function TaskList({
   const [sort, setSort] = useState<Sort>({ key: "due", dir: "asc" });
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = usePageSize("project-tasks");
+  const [picked, setPicked] = useState<Set<string>>(() => new Set());
+  const [confirming, setConfirming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const cats = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
   const names = useMemo(() => new Map(people.map((p) => [p.id, p.name])), [people]);
@@ -84,6 +96,45 @@ export function TaskList({
   const pages = Math.max(1, Math.ceil(rows.length / pageSize));
   const current = Math.min(page, pages);
   const visible = rows.slice((current - 1) * pageSize, current * pageSize);
+
+  // Realtime pode remover tarefas: a seleção só conta as que ainda existem.
+  const selected = useMemo(() => tasks.filter((t) => picked.has(t.id)).map((t) => t.id), [tasks, picked]);
+  const pageIds = visible.map((t) => t.id);
+  const pageAll = pageIds.length > 0 && pageIds.every((i) => picked.has(i));
+  const pageSome = !pageAll && pageIds.some((i) => picked.has(i));
+
+  const toggleOne = (taskId: string) =>
+    setPicked((s) => {
+      const n = new Set(s);
+      if (n.has(taskId)) n.delete(taskId);
+      else n.add(taskId);
+      return n;
+    });
+  const togglePage = () =>
+    setPicked((s) => {
+      const n = new Set(s);
+      for (const i of pageIds) {
+        if (pageAll) n.delete(i);
+        else n.add(i);
+      }
+      return n;
+    });
+
+  async function removeSelected() {
+    setDeleting(true);
+    setError(null);
+    const { data, error: err } = await getSupabase().from("tasks").delete().in("id", selected).select("id");
+    setDeleting(false);
+    setConfirming(false);
+    if (err) return setError(err.message);
+    // RLS filtra em silêncio: compara o que saiu com o que foi pedido.
+    const gone = new Set((data ?? []).map((r) => r.id));
+    setPicked((s) => new Set([...s].filter((i) => !gone.has(i))));
+    if (gone.size < selected.length) {
+      setError(`${selected.length - gone.size} tarefa(s) não puderam ser excluídas (sem permissão ou já removidas).`);
+    }
+    onChanged?.();
+  }
 
   const filter = <T,>(set: (v: T) => void) => (v: T) => {
     set(v);
@@ -128,6 +179,23 @@ export function TaskList({
         </Select>
       </div>
 
+      {canBulkDelete && selected.length > 0 && (
+        <div role="region" aria-label="Ações em lote" className="surface-card flex flex-wrap items-center justify-between gap-3 px-4 py-2">
+          <span className="text-sm">
+            <span className="num">{selected.length}</span> {selected.length === 1 ? "tarefa selecionada" : "tarefas selecionadas"}
+          </span>
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={() => setPicked(new Set())}>
+              <X strokeWidth={1.75} aria-hidden /> Limpar seleção
+            </Button>
+            <Button type="button" variant="destructive" size="sm" onClick={() => setConfirming(true)}>
+              <Trash2 strokeWidth={1.75} aria-hidden /> Excluir selecionadas
+            </Button>
+          </div>
+        </div>
+      )}
+      {error && <p role="alert" className={MSG_ERROR}>{error}</p>}
+
       {rows.length === 0 ? (
         <p className="surface-card px-4 py-6 text-sm text-muted-foreground">Nenhuma tarefa com esses filtros.</p>
       ) : (
@@ -135,6 +203,20 @@ export function TaskList({
           <table className="w-full min-w-[46rem] text-left text-sm">
             <thead>
               <tr className="border-b">
+                {canBulkDelete && (
+                  <th scope="col" className="w-10 pl-4">
+                    <input
+                      type="checkbox"
+                      className="size-4 accent-primary"
+                      aria-label="Selecionar todas as tarefas desta página"
+                      checked={pageAll}
+                      ref={(el) => {
+                        if (el) el.indeterminate = pageSome;
+                      }}
+                      onChange={togglePage}
+                    />
+                  </th>
+                )}
                 {COLUMNS.map((c) => {
                   const active = sort.key === c.key;
                   const Icon = sort.dir === "asc" ? ArrowUp : ArrowDown;
@@ -163,7 +245,18 @@ export function TaskList({
                 const cat = t.category_id ? cats.get(t.category_id) : undefined;
                 const overdue = t.status !== "done" && !!t.due_date && t.due_date < today;
                 return (
-                  <tr key={t.id} className="h-13 border-b last:border-b-0">
+                  <tr key={t.id} className={cn("h-13 border-b last:border-b-0", picked.has(t.id) && "bg-muted/60")}>
+                    {canBulkDelete && (
+                      <td className="w-10 pl-4">
+                        <input
+                          type="checkbox"
+                          className="size-4 accent-primary"
+                          aria-label={`Selecionar ${t.title}`}
+                          checked={picked.has(t.id)}
+                          onChange={() => toggleOne(t.id)}
+                        />
+                      </td>
+                    )}
                     <td className="px-2">
                       <button
                         type="button"
@@ -207,6 +300,17 @@ export function TaskList({
           </table>
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirming}
+        title={selected.length === 1 ? "Excluir 1 tarefa?" : `Excluir ${selected.length} tarefas?`}
+        description="Comentários, checklists e anexos das tarefas selecionadas também serão removidos. Esta ação não pode ser desfeita."
+        confirmLabel={deleting ? "Excluindo…" : "Excluir"}
+        destructive
+        busy={deleting}
+        onConfirm={removeSelected}
+        onCancel={() => setConfirming(false)}
+      />
 
       <Pagination page={current} pageSize={pageSize} total={rows.length} onPageChange={setPage} onPageSizeChange={setPageSize} />
     </div>
