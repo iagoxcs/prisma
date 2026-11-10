@@ -165,6 +165,11 @@
   --sidebar-accent-foreground: #163a5c;
   --sidebar-border: var(--glass-edge);
   --sidebar-ring: #2a6aa3;
+
+  /* Caixa de seleção: borda visível sobre o vidro; marca na cor de --primary-foreground. */
+  --checkbox-border: #6f8faf;
+  --checkbox-mark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.5 8.5l3 3 6-6.5'/%3E%3C/svg%3E");
+  --checkbox-dash: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M4 8h8'/%3E%3C/svg%3E");
 }
 
 /* ---------- Tema escuro · Noturno ---------- */
@@ -245,6 +250,10 @@
   --sidebar-accent-foreground: #e6f0f8;
   --sidebar-border: var(--glass-edge);
   --sidebar-ring: #6faae0;
+
+  --checkbox-border: rgb(255 255 255 / 0.42);
+  --checkbox-mark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23081a2e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.5 8.5l3 3 6-6.5'/%3E%3C/svg%3E");
+  --checkbox-dash: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23081a2e' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M4 8h8'/%3E%3C/svg%3E");
 }
 
 /* ---------- Camadas de vidro ----------
@@ -327,5 +336,35 @@
   :focus-visible {
     outline: 2px solid var(--ring);
     outline-offset: 2px;
+  }
+  /* Caixa de seleção da identidade (substitui a nativa em todo o app). O tamanho vem da classe (size-4). */
+  input[type="checkbox"] {
+    appearance: none;
+    flex-shrink: 0;
+    width: 1rem;
+    height: 1rem;
+    margin: 0;
+    border: 1.5px solid var(--checkbox-border);
+    border-radius: 0.3rem;
+    background-color: transparent;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+    cursor: pointer;
+    transition: background-color 150ms ease-out, border-color 150ms ease-out;
+  }
+  input[type="checkbox"]:hover:not(:disabled) {
+    border-color: var(--brand-mid);
+  }
+  input[type="checkbox"]:checked,
+  input[type="checkbox"]:indeterminate {
+    border-color: var(--primary);
+    background-color: var(--primary);
+  }
+  input[type="checkbox"]:checked { background-image: var(--checkbox-mark); }
+  input[type="checkbox"]:indeterminate { background-image: var(--checkbox-dash); }
+  input[type="checkbox"]:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
   }
 }
