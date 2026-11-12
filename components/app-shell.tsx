@@ -3,12 +3,12 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
-import { Bell, BookOpen, Briefcase, Building2, CalendarRange, ChartColumn, FileText, LayoutDashboard, LogOut, Settings } from "lucide-react";
+import { Bell, BookOpen, Briefcase, Building2, CalendarRange, ChartColumn, CircleUser, FileText, LayoutDashboard, LogOut, Settings } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import { NotificationBell } from "@/components/notification-bell";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { PrismaMark, PrismaWordmark } from "@/components/brand/prisma-mark";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import type { Permission } from "@/lib/permissions";
 import { ORG_NAME } from "@/lib/settings";
 import { cn } from "@/lib/utils";
@@ -96,9 +96,18 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="mt-4 rounded-lg bg-sidebar-accent p-3 text-sm">
           <div className="font-semibold">{profile.name}</div>
           <div className="text-muted-foreground">{ROLE_LABEL[profile.role]}</div>
-          <Button variant="ghost" size="sm" className="mt-2 -ml-2" onClick={signOut}>
-            <LogOut strokeWidth={1.75} /> Sair
-          </Button>
+          <div className="mt-2 -ml-2 flex flex-wrap">
+            <Link
+              href="/conta/"
+              aria-current={isActive("/conta/") ? "page" : undefined}
+              className={cn(buttonVariants({ variant: "ghost", size: "sm" }), isActive("/conta/") && "text-foreground")}
+            >
+              <CircleUser strokeWidth={1.75} /> Minha conta
+            </Link>
+            <Button variant="ghost" size="sm" onClick={signOut}>
+              <LogOut strokeWidth={1.75} /> Sair
+            </Button>
+          </div>
         </div>
       </aside>
 
@@ -122,6 +131,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="flex items-center gap-1">
             <ThemeToggle />
             <NotificationBell />
+            <Link href="/conta/" aria-label="Minha conta" className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "md:hidden")}>
+              <CircleUser strokeWidth={1.75} />
+            </Link>
             <Button variant="ghost" size="icon" className="md:hidden" aria-label="Sair" onClick={signOut}>
               <LogOut strokeWidth={1.75} />
             </Button>

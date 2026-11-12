@@ -20,6 +20,18 @@ site_url = "http://localhost:3000"
 additional_redirect_urls = ["http://localhost:3000/**"]
 enable_signup = false          # usuários entram por convite (internos e externos)
 minimum_password_length = 10
+enable_manual_linking = true   # "Vincular Discord" em /conta/ (vinculação B)
+
+# Login com Discord (Etapa 2 do roteiro Hermes + Discord). O cadastro continua fechado: o Discord só
+# entra em conta existente, por e-mail verificado igual (vinculação A) ou vinculação manual (B).
+# Em produção o Client ID e o Secret ficam no painel (Authentication → Providers → Discord).
+# Local (supabase start): defina as duas variáveis em supabase/.env (não versionado), com um app de
+# teste do Discord cujo redirect seja http://127.0.0.1:54321/auth/v1/callback.
+[auth.external.discord]
+enabled = true
+client_id = "env(SUPABASE_AUTH_EXTERNAL_DISCORD_CLIENT_ID)"
+secret = "env(SUPABASE_AUTH_EXTERNAL_DISCORD_SECRET)"
+redirect_uri = ""
 
 # E-mails do Auth em pt-BR. Em produção o envio sai pelo SMTP do Resend e os templates
 # são colados no painel (Authentication → Emails); ver docs/DEPLOY.md, seção "E-mail (Resend)".
