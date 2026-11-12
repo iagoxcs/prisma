@@ -48,9 +48,24 @@ O Discord é uma segunda identidade do **mesmo** usuário no Supabase Auth, e o 
 
 - **A, automática:** ao entrar com o Discord, o Supabase liga a identidade à conta com o mesmo e-mail, desde que o Discord informe o e-mail como verificado. Com e-mail não verificado ou sem conta correspondente, o Supabase tentaria criar um usuário, e o cadastro fechado recusa (H6).
 - **B, manual:** em `/conta/` ("Minha conta"), `linkIdentity` liga o Discord à sessão atual. Depende de `enable_manual_linking`, que em produção é o "Allow manual linking" do painel.
-- **Desvincular:** `unlinkIdentity`, bloqueado quando o Discord é a única identidade.
+- **Desvincular:** `unlinkIdentity`, bloqueado quando o Discord é a única identidade. **Quando o e-mail verificado do Discord é igual ao da conta, desvincular não impede o acesso:** o próximo "Entrar com Discord" vincula de novo pela regra A. Para tirar o acesso de alguém, desative o perfil. A RLS bloqueia o Prisma, e `profile_by_discord_id` recusa o Hermes.
 - **Retorno do OAuth:** o login volta para `/login/` (com sessão segue para `/`; com erro, mostra o motivo) e o vínculo volta para `/conta/`.
 - **Externos:** não veem o bloco Discord em `/conta/`, porque o assistente do Prisma é só para internos.
+- **Testes em produção (12/11/2026):**
+  - **Passaram:** Discord sem conta foi recusado ("Signups not allowed"), a vinculação A funcionou para dois usuários e o perfil inativo vinculado caiu em "Acesso pendente".
+  - **Não executados, por decisão:** a vinculação B com e-mail diferente e o desvincular com e-mail diferente.
+  - **H6 (e-mail não verificado) não reproduzido:** o risco foi aceito com base no comportamento do Supabase, que só faz vinculação automática com e-mail verificado.
+
+### `ai-gateway` (Etapa 3, leitura)
+
+Edge Function `supabase/functions/ai-gateway`, chamada só pelo plugin do Hermes (`verify_jwt = false`):
+- **Chamador:** cabeçalho `x-hermes-secret` igual a `HERMES_GATEWAY_SECRET`, comparado em tempo constante.
+- **Identidade:** `profile_by_discord_id(discord_user_id)`, executável só pelo `service_role`. Retorna o perfil apenas se estiver ativo e não for `externo`; se não, `403 not_linked`.
+- **Sessão:** link mágico gerado e verificado dentro da função, sem envio de e-mail. As consultas rodam com o JWT do usuário, então a RLS se aplica. O token não sai da função, e a sessão é encerrada (`signOut`, escopo `local`) ao fim de cada chamada.
+- **Ferramentas:** `list_projects`, `list_tasks`, `get_task`, `search_context` e `search_knowledge`. As colunas são explícitas, as buscas têm limite de 10 e os textos são cortados em 2000 caracteres.
+- **Limite:** 30 chamadas por minuto por usuário; acima disso, `429`.
+- **Auditoria:** toda chamada vai para `ai_actions_log`, com `source`, `status`, `tool`, os args, `request_id` e `project_id`. O resultado guarda só a contagem ou o código, nunca os dados. Recusas sem perfil guardam o `discord_user_id` em `external_ref`.
+- **Limitação (H12):** cada chamada atualiza o "último acesso" do usuário.
 
 ### Spikes do Hermes (S1–S3) — 11/11/2026
 
