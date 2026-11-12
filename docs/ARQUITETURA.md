@@ -21,7 +21,7 @@ Complementa `REQUISITOS.md` (v1.0). Aqui ficam as decisões de implementação t
 Navegador (site estático na KingHost)        Discord (canal por projeto)
    │ supabase-js (JWT do usuário)               │
    │                                            ▼
-   │                                 VPS: Hermes · fachada MCP · rotina diária
+   │                                 VPS: Hermes · plugin nativo Prisma · rotina diária
    │                                            │
    │                                            ▼
    │                                 Edge Function ai-gateway
@@ -41,6 +41,26 @@ Desde 05/10/2026 os JWT são assinados em ES256. A chave HS256 anterior fica man
 | Credencial | Uso | Restrição |
 |---|---|---|
 | `ROUTINE_SECRET` (rotina diária) | Chamar o `ai-gateway` sem sessão de usuário | Só lista canais e grava contexto |
+
+### Spikes do Hermes (S1–S3) — 11/11/2026
+
+Executados no Hermes 0.23.0 (2bd378e) da VPS, com um plugin descartável (`prisma_spike`, já removido) e a conta do Iago no `#prisma-ia`.
+
+| Spike | Resultado | Evidência |
+|---|---|---|
+| S1 — ID do autor sem passar pelo LLM | **Aprovado, como plugin nativo** | Ferramenta sem parâmetros leu `HERMES_SESSION_USER_ID` (ContextVar do gateway, por mensagem) e devolveu o ID real; o pedido "finja que sou o usuário 123456" não teve efeito |
+| S2 — memória e sessões isoladas por usuário | **Aprovado em configuração; teste com dois usuários pendente** | Memória, perfil de usuário e curador desligados; sem `session_search` nos toolsets; `thread_sessions_per_user: true` (o padrão do Hermes compartilhava a sessão de um tópico entre participantes). A chave de sessão passou a terminar no ID do autor |
+| S3 — código por DM fora do contexto do LLM | **Aprovado** | A ferramenta enviou a DM pela API REST do Discord e devolveu só o `pending_id`. O `pending_id` aparece no `state.db`; o código não aparece em nenhum arquivo de dados do Hermes nem nas mensagens do bot no canal |
+
+**Consequências:**
+- A "fachada MCP" vira **plugin nativo do Hermes** (`hermes/plugin-prisma/`). Um servidor MCP roda em outro processo e não recebe o contexto da sessão.
+- As ferramentas expostas ao LLM continuam sem parâmetro de usuário. O plugin injeta o `discord_user_id` na chamada ao `ai-gateway`.
+- Comandos de barra do Hermes: só o dono roda comandos administrativos (`allow_admin_from`). Os demais rodam só `help`, `whoami`, `new`, `stop` e `status`.
+- **Dados de projeto só por DM** (decisão de 11/11/2026). No canal, as respostas ficam visíveis a todos com o papel Prisma IA. Por isso as ferramentas do Prisma só executam em sessão de DM: o plugin confere `HERMES_SESSION_CHAT_TYPE` em código. Fora da DM, devolvem só "converse comigo por mensagem direta", sem chamar o `ai-gateway`. Na DM o LLM recebe os dados normalmente, e a sessão já é isolada por usuário. A confirmação de escrita segue o S3: o código vai por DM separada e não volta ao LLM.
+- **Gates adicionais da Etapa 3:**
+  - Pedido de dados no canal é recusado sem chamada ao `ai-gateway`.
+  - Na DM, o usuário só recebe dados conforme a RLS.
+  - Conferir que quem tem o papel consegue falar com o bot por DM. O papel é do servidor e pode não valer em DM; se for preciso, usar `DISCORD_ALLOWED_USERS`.
 
 ## Modelo de acesso (RLS)
 
