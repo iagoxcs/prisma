@@ -1,0 +1,11 @@
+name: prisma
+version: 0.1.0
+description: "Ferramentas de leitura do Prisma (projetos, tarefas, contexto e base de conhecimento) via ai-gateway. Só em DM do Discord; o autor vem do contexto da sessão, nunca do LLM."
+author: "Ambiente Consultoria"
+kind: standalone
+provides_tools:
+  - prisma_listar_projetos
+  - prisma_listar_tarefas
+  - prisma_ver_tarefa
+  - prisma_buscar_contexto
+  - prisma_buscar_conhecimento
