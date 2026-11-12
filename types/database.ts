@@ -50,25 +50,40 @@ export type Database = {
       ai_actions_log: {
         Row: {
           created_at: string
+          external_ref: string | null
           id: string
           input: Json | null
+          project_id: string | null
+          request_id: string | null
           result: Json | null
+          source: string
+          status: string
           tool: string
           user_id: string | null
         }
         Insert: {
           created_at?: string
+          external_ref?: string | null
           id?: string
           input?: Json | null
+          project_id?: string | null
+          request_id?: string | null
           result?: Json | null
+          source?: string
+          status?: string
           tool: string
           user_id?: string | null
         }
         Update: {
           created_at?: string
+          external_ref?: string | null
           id?: string
           input?: Json | null
+          project_id?: string | null
+          request_id?: string | null
           result?: Json | null
+          source?: string
+          status?: string
           tool?: string
           user_id?: string | null
         }
@@ -1248,6 +1263,7 @@ export type Database = {
       is_project_manager: { Args: { pid: string }; Returns: boolean }
       is_project_member: { Args: { pid: string }; Returns: boolean }
       knowledge_item_id: { Args: { object_name: string }; Returns: string }
+      profile_by_discord_id: { Args: { p_discord_id: string }; Returns: string }
       role_can: { Args: { perm: string }; Returns: boolean }
       shares_project_with: { Args: { other: string }; Returns: boolean }
     }
