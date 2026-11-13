@@ -1,0 +1,28 @@
+[Unit]
+Description=Prisma: rotina diária (resumo dos canais de projeto no Discord)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+# Segredos só neste arquivo (root, 600): ROUTINE_SECRET, DISCORD_BOT_TOKEN, NEXOS_API_KEY,
+# OPS_CHANNEL_ID, DISCORD_GUILD_ID e ROUTINE_IGNORE_CHANNELS.
+EnvironmentFile=/etc/prisma-routine.env
+ExecStart=/usr/bin/python3 -I /opt/prisma-routine/prisma_routine.py
+TimeoutStartSec=30min
+# Usuário efêmero sem acesso ao Hermes nem ao Docker; só rede de saída.
+DynamicUser=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=

@@ -28,3 +28,33 @@ for p in cli api_server cron webhook; do hermes tools disable --platform $p pris
 Depois, reinicie o container (`docker compose restart` em `/docker/hermes-agent-iipr`).
 
 No `config.yaml`, `discord.dm_role_auth_guild` aponta para o servidor do Prisma. Assim quem tem o papel **Prisma IA** consegue falar com o bot por DM; sem essa opção, DMs aceitam só os IDs de `DISCORD_ALLOWED_USERS`.
+
+## `routine/`
+
+Rotina diária da Etapa 4: para cada projeto ativo com **Canal do Discord** preenchido no editor do projeto, lê as mensagens do dia anterior, pede ao Claude Haiku 5.5 (router da Hostinger) um resumo em JSON (resumo, decisões e pendências) e grava no **Contexto** do projeto com o tipo "Discord".
+
+- Script determinístico, não é agente (H9): o canal define o projeto; o LLM só resume, sem ferramentas, e a conversa entra no prompt como dado.
+- Credencial própria `ROUTINE_SECRET` (cabeçalho `x-routine-secret`), que no `ai-gateway` só lista canais e grava contexto (N5).
+- Idempotente: reexecutar o mesmo dia atualiza a mesma entrada (`source_ref = canal:data`).
+- Relatório em `#prisma-operacao` (sucesso ou falha por canal e canais do servidor sem projeto) e auditoria em `ai_actions_log` com `source = 'routine'`. O journald guarda só contagens e códigos.
+- Mensagens de bots, inclusive as do próprio assistente, ficam fora do resumo.
+
+### Instalação na VPS
+
+O timer roda às **00:30 (America/Sao_Paulo)** e resume o dia anterior inteiro. Assim nenhuma mensagem da noite fica de fora, o que poderia acontecer com um horário antes da meia-noite. O serviço roda com usuário efêmero (`DynamicUser`), sem acesso ao Hermes nem ao Docker.
+
+```bash
+# na máquina local, a partir da raiz do repositório
+tar cf - -C hermes/routine prisma_routine.py prisma-routine.service prisma-routine.timer | ssh iago@187.127.8.245 'mkdir -p /tmp/pr && tar xf - -C /tmp/pr && sudo install -D -m 755 /tmp/pr/prisma_routine.py /opt/prisma-routine/prisma_routine.py && sudo install -m 644 /tmp/pr/prisma-routine.service /tmp/pr/prisma-routine.timer /etc/systemd/system/ && sudo systemctl daemon-reload && rm -rf /tmp/pr'
+```
+
+As variáveis ficam em `/etc/prisma-routine.env` (root, 600): `ROUTINE_SECRET`, `DISCORD_BOT_TOKEN`, `NEXOS_API_KEY`, `OPS_CHANNEL_ID` (#prisma-operacao), `DISCORD_GUILD_ID` e `ROUTINE_IGNORE_CHANNELS` (IDs que não geram alerta de canal sem projeto, como #prisma-ia). Ao rotacionar o token do bot ou a chave do router, atualize também este arquivo. O `ROUTINE_SECRET` precisa ser o mesmo nos Secrets das Edge Functions.
+
+```bash
+sudo systemctl enable --now prisma-routine.timer      # liga o agendamento
+sudo systemctl start prisma-routine.service           # executa agora (dia anterior)
+journalctl -u prisma-routine.service -n 50            # resultado
+# outro dia ou simulação, com as mesmas variáveis:
+sudo systemd-run --wait --pipe -p EnvironmentFile=/etc/prisma-routine.env -p DynamicUser=yes \
+  /usr/bin/python3 -I /opt/prisma-routine/prisma_routine.py --date 2026-11-12 --dry-run
+```
