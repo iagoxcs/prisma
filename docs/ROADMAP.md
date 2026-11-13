@@ -52,8 +52,8 @@ Legenda: ✅ feito · 🟡 parcial · ⬜ pendente
 - ✅ Etapa 2 — Login com Discord
 - ✅ Etapa 3 — Gateway de leitura
 - 🟡 Etapa 4 — Canal por projeto e rotina diária (em produção desde 13/11/2026; gate: 7 execuções seguidas)
-- 🟡 Etapa 5 — Escrita com confirmação (criar e alterar tarefa, comentário interno, registro de contexto; `generate_report` adiado até existir a tela de relatórios)
-- ⬜ Etapa 6 — Áudio
+- ✅ Etapa 5 — Escrita com confirmação (criar e alterar tarefa, comentário interno, registro de contexto; `generate_report` adiado até existir a tela de relatórios)
+- 🟡 Etapa 6 — Áudio (mensagens de voz na DM, transcritas pelo Gemini via router; transcrição gravável no contexto do projeto)
 - ⬜ Trilha paralela — Migração das chaves de API
 
 ## Fase 5 — Indicadores (RF-23–26)

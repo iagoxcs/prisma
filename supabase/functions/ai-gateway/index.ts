@@ -13,7 +13,9 @@ const CONFIRM_TTL_MS = 10 * 60_000; // DV7: confirmação válida por 10 min
 const MAX_ATTEMPTS = 3; // DV7
 const EXCERPT = 2000;
 const TOOLS = ["list_projects", "list_tasks", "get_task", "search_context", "search_knowledge"] as const;
-const WRITE_TOOLS = ["propose", "commit"] as const;
+// whoami (Etapa 6): só confirma que o autor está vinculado a um perfil ativo e interno, sem abrir sessão.
+// O plugin consulta antes de enviar um áudio ao provedor de transcrição.
+const WRITE_TOOLS = ["propose", "commit", "whoami"] as const;
 const ROUTINE_TOOLS = ["routine_list_channels", "routine_upsert_context"] as const;
 type Tool = (typeof TOOLS)[number];
 type Args = Record<string, unknown>;
@@ -751,6 +753,10 @@ Deno.serve(async (req) => {
   };
 
   try {
+    if (tool === "whoami") {
+      await audit("executed", { linked: true });
+      return json({ ok: true, tool, data: { linked: true } });
+    }
     if (tool === "propose") return await propose();
     if (tool === "commit") return await commit();
     const data = await runTool(await openSession(), tool as Tool, args);
