@@ -146,7 +146,7 @@ Princípios:
 | RNF-01 | RLS habilitado em 100% das tabelas desde a primeira migração. |
 | RNF-02 | `service_role` nunca exposta ao navegador; uso restrito a Edge Functions. |
 | RNF-03 | Bucket de anexos privado, acesso por URL assinada, limite de 20 MB aplicado no bucket e na interface. |
-| RNF-04 | Anexos de qualquer formato são sempre servidos como download, nunca executados ou renderizados inline. |
+| RNF-04 | Anexos de qualquer formato são sempre servidos como download, nunca executados ou renderizados inline. A pré-visualização (TXT, PDF, DOCX, XLSX, HTML, BPMN) mostra só o conteúdo extraído no navegador, isolado: PDF em canvas, HTML/DOCX higienizados em `iframe sandbox` sem script e sem rede (revisto em 13/11/2026). |
 | RNF-05 | HTML de relatórios renderizado em iframe com `sandbox`, sem script. |
 | RNF-06 | Backups habilitados no projeto de produção. |
 | RNF-07 | Tipos TypeScript gerados a partir do schema a cada migração. |

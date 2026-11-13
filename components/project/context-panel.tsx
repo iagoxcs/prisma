@@ -9,6 +9,8 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ErrorState } from "@/components/ui/error-state";
 import { Input } from "@/components/ui/input";
 import { SkeletonList } from "@/components/ui/skeleton";
+import { acceptFor, MAX_READ_BYTES, TEXT_KINDS } from "@/lib/files/kinds";
+import { readAsText, ReadError } from "@/lib/files/read";
 import { brDate } from "@/lib/format";
 import { getSupabase } from "@/lib/supabase/client";
 import { MSG_ERROR, SELECT_CLASS, TEXTAREA_CLASS } from "@/lib/ui";
@@ -21,8 +23,9 @@ import { Select } from "@/components/ui/select";
 // Corpo fica fora da listagem (até 500 mil caracteres): só é buscado ao ler ou editar.
 type Entry = Omit<ProjectContextEntry, "body"> & { profiles?: { name: string } | null };
 const COLS = "id, project_id, kind, title, meeting_date, participants, source_file_name, created_by, created_at, updated_at, profiles(name)";
-const IMPORT_EXT = [".txt", ".md", ".vtt", ".srt"];
-const MAX_IMPORT_BYTES = 2 * 1024 * 1024;
+// Texto puro e legendas, mais documentos convertidos em texto no navegador (lib/files/read.ts).
+const IMPORT_EXT = acceptFor(TEXT_KINDS).split(",");
+const MAX_IMPORT_BYTES = MAX_READ_BYTES;
 const MAX_BODY = 500000;
 const LABEL = "block text-[0.8125rem] font-medium text-muted-foreground";
 
@@ -257,16 +260,26 @@ function EntryForm({
   const [d, setD] = useState<Draft>(initial);
   const [error, setError] = useState<string | null>(null);
   const [importMsg, setImportMsg] = useState<string | null>(null);
+  const [reading, setReading] = useState(false);
   const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setD((s) => ({ ...s, [k]: v }));
 
   async function importFile(file: File) {
     setImportMsg(null);
-    if (!IMPORT_EXT.some((ext) => file.name.toLowerCase().endsWith(ext))) return setImportMsg("Formato não suportado. Use .txt, .md, .vtt ou .srt.");
-    if (file.size > MAX_IMPORT_BYTES) return setImportMsg("O arquivo excede o limite de 2 MB.");
-    const text = await file.text();
-    if (!text.trim()) return setImportMsg("O arquivo está vazio.");
+    if (!IMPORT_EXT.some((ext) => file.name.toLowerCase().endsWith(ext))) return setImportMsg("Formato não suportado. Use TXT, MD, VTT, SRT, PDF, Word, Excel, HTML ou BPMN.");
+    if (file.size > MAX_IMPORT_BYTES) return setImportMsg("O arquivo excede o limite de 20 MB.");
+    let text: string;
+    setReading(true);
+    try {
+      text = (await readAsText(file)).trim();
+    } catch (e) {
+      return setImportMsg(e instanceof ReadError ? e.message : "Não foi possível ler o arquivo.");
+    } finally {
+      setReading(false);
+    }
+    if (!text) return setImportMsg("O arquivo não tem texto (pode ser uma imagem escaneada).");
+    if (text.length > MAX_BODY) setImportMsg(`O texto passou de ${MAX_BODY.toLocaleString("pt-BR")} caracteres e foi cortado.`);
     setD((s) => ({ ...s, body: text.slice(0, MAX_BODY), source_file_name: file.name, title: s.title || file.name.replace(/\.[^.]+$/, "").slice(0, 200) }));
   }
 
@@ -327,8 +340,8 @@ function EntryForm({
       </label>
       <div className="flex flex-wrap items-center gap-2">
         <Button type="submit" disabled={busy}>{busy ? "Salvando…" : "Salvar"}</Button>
-        <Button type="button" variant="outline" onClick={() => fileRef.current?.click()}>
-          <FileUp strokeWidth={1.75} aria-hidden /> Importar arquivo
+        <Button type="button" variant="outline" disabled={reading} onClick={() => fileRef.current?.click()}>
+          <FileUp strokeWidth={1.75} aria-hidden /> {reading ? "Lendo o arquivo…" : "Importar arquivo"}
         </Button>
         <input
           ref={fileRef}

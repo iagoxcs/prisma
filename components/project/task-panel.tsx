@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { Download, Paperclip, X } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import { DocCategoryField, useCanCategorize } from "@/components/documents/doc-category";
+import { PreviewButton } from "@/components/files/file-preview";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
@@ -436,6 +437,7 @@ function Attachments({ taskId, projectId }: { taskId: string; projectId: string 
               <span className="truncate">{a.file_name}</span>
             </button>
             <span className="flex shrink-0 items-center gap-1 text-muted-foreground">
+              <PreviewButton bucket={BUCKET} path={a.storage_path} fileName={a.file_name} onDownload={() => download(a)} />
               <span className="text-xs">
                 <DocCategoryField
                   id={a.id}
@@ -474,7 +476,7 @@ function Attachments({ taskId, projectId }: { taskId: string; projectId: string 
           }}
         />
       </label>
-      <p className="text-[0.8125rem] text-muted-foreground">Qualquer formato, até 20 MB. Arquivos são sempre baixados, nunca abertos no navegador.</p>
+      <p className="text-[0.8125rem] text-muted-foreground">Qualquer formato, até 20 MB. TXT, PDF, Word, Excel, HTML e BPMN têm pré-visualização; o arquivo em si é sempre baixado.</p>
       {(error || list.error) && <p role="alert" className={MSG_ERROR}>{error ?? list.error}</p>}
     </section>
   );

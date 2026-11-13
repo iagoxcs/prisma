@@ -1,2 +1,3 @@
 # Arquivos instalados na VPS (Linux): sempre LF, mesmo com core.autocrlf no Windows.
 hermes/routine/** text eol=lf
+hermes/plugin-prisma/** text eol=lf

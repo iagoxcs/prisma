@@ -7,7 +7,9 @@ import { Button } from "@/components/ui/button";
 import { brDate } from "@/lib/format";
 import { getSupabase } from "@/lib/supabase/client";
 import { CATEGORY_PALETTE } from "@/lib/theme/status";
-import { buildPreview, CHECKLIST_SEPARATOR, readCsvFile, TEMPLATE_HEADERS, templateCsv, type ImportPreview } from "@/lib/task-csv";
+import { acceptFor } from "@/lib/files/kinds";
+import { readTableAsCsv, ReadError } from "@/lib/files/read";
+import { buildPreview, CHECKLIST_SEPARATOR, TEMPLATE_HEADERS, templateCsv, type ImportPreview } from "@/lib/task-csv";
 import { TaskExport } from "@/components/project/task-export";
 import { MSG_ERROR, MSG_OK, SEGMENT_ITEM, SELECT_CLASS } from "@/lib/ui";
 import { useQuery } from "@/lib/use-query";
@@ -79,7 +81,12 @@ export function TaskImport({
     if (!file) return;
     setModelId("");
     setFileName(file.name);
-    setPreview(buildPreview(await readCsvFile(file), categories, people));
+    try {
+      setPreview(buildPreview(await readTableAsCsv(file), categories, people));
+    } catch (err) {
+      setPreview(null);
+      setError(err instanceof ReadError ? err.message : "Não foi possível ler a planilha.");
+    }
   }
 
   // Planilha de fases de um modelo da base: mesmo fluxo de pré-visualização do arquivo.
@@ -94,6 +101,12 @@ export function TaskImport({
     if (error || !data?.template_csv) return setError(error?.message ?? "O modelo não tem planilha de fases.");
     setFileName(`Modelo: ${data.title}`);
     setPreview(buildPreview(data.template_csv as string, categories, people));
+  }
+
+  async function downloadTemplateXlsx() {
+    const [{ toXlsx, downloadBlob }, { parseCsv }] = await Promise.all([import("@/lib/files/write"), import("@/lib/task-csv")]);
+    const [columns, ...rows] = parseCsv(templateCsv());
+    downloadBlob(await toXlsx([{ name: "Tarefas", columns, rows }]), "modelo-tarefas.xlsx");
   }
 
   function downloadTemplate() {
@@ -209,11 +222,11 @@ export function TaskImport({
           </button>
         </div>
 
-        {tab === "export" && <TaskExport tasks={tasks} filtered={filteredTasks} filtering={filtering} categories={categories} people={people} />}
+        {tab === "export" && <TaskExport projectId={projectId} tasks={tasks} filtered={filteredTasks} filtering={filtering} categories={categories} people={people} />}
 
         <div className={tab === "import" ? "space-y-3 text-sm" : "hidden"}>
           <p>
-            Envie um arquivo CSV com uma tarefa por linha. Só a coluna <strong>Título</strong> é obrigatória; as demais são
+            Envie uma planilha Excel (.xlsx) ou CSV com uma tarefa por linha. Só a coluna <strong>Título</strong> é obrigatória; as demais são
             opcionais e podem estar em qualquer ordem.
           </p>
           <ul className="grid gap-1.5 rounded-xl bg-secondary p-4 text-[0.8125rem] text-muted-foreground sm:grid-cols-2">
@@ -227,12 +240,15 @@ export function TaskImport({
             <li className="sm:col-span-2"><span className="font-medium text-foreground">{TEMPLATE_HEADERS.checklist}</span> · itens separados por <span className="num">{CHECKLIST_SEPARATOR}</span></li>
           </ul>
           <div className="flex flex-wrap items-center gap-2">
+            <Button type="button" variant="outline" onClick={downloadTemplateXlsx}>
+              <Download strokeWidth={1.75} aria-hidden /> Modelo Excel
+            </Button>
             <Button type="button" variant="outline" onClick={downloadTemplate}>
-              <Download strokeWidth={1.75} aria-hidden /> Baixar modelo
+              <Download strokeWidth={1.75} aria-hidden /> Modelo CSV
             </Button>
             <label className="inline-flex h-11 cursor-pointer items-center rounded-md bg-primary px-5 text-sm font-semibold text-primary-foreground transition-colors duration-150 hover:bg-primary/90 has-focus-visible:ring-3 has-focus-visible:ring-ring/50">
               Escolher arquivo
-              <input type="file" accept=".csv,text/csv" className="sr-only" disabled={busy} onChange={pick} />
+              <input type="file" accept={acceptFor(["csv", "xlsx"])} className="sr-only" disabled={busy} onChange={pick} />
             </label>
             {fileName && <span className="num truncate text-[0.8125rem] text-muted-foreground">{fileName}</span>}
           </div>
