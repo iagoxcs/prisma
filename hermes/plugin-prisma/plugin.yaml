@@ -1,5 +1,5 @@
 name: prisma
-version: 0.4.0
+version: 0.4.1
 description: "Ferramentas do Prisma via ai-gateway: leitura, escrita com prévia confirmada por ✅ ou 'sim' na DM (conferida no Discord pelo plugin), leitura e geração de arquivos (TXT, MD, CSV, PDF, DOCX, XLSX, HTML, BPMN) e transcrição de mensagens de voz (provedor prisma_stt). Só em DM do Discord; o autor vem do contexto da sessão, nunca do LLM."
 author: "Ambiente Consultoria"
 kind: standalone
