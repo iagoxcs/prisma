@@ -67,6 +67,24 @@ Edge Function `supabase/functions/ai-gateway`, chamada só pelo plugin do Hermes
 - **Auditoria:** toda chamada vai para `ai_actions_log`, com `source`, `status`, `tool`, os args, `request_id` e `project_id`. O resultado guarda só a contagem ou o código, nunca os dados. Recusas sem perfil guardam o `discord_user_id` em `external_ref`.
 - **Limitação (H12):** cada chamada atualiza o "último acesso" do usuário.
 
+### Escrita com prévia (Etapa 5, revista em 13/11/2026)
+- **Antes:** a proposta gerava um código de 6 dígitos enviado por DM; o usuário digitava o código na conversa.
+- **Agora:** `propose` devolve um segredo aleatório de 128 bits que fica só na memória do plugin (nunca vai ao LLM nem ao usuário). O plugin posta na DM a **prévia** com todos os campos que serão gravados e adiciona ✅ e ❌. `prisma_confirmar_acao` só manda o `commit` (com o segredo) depois de conferir, na API REST do Discord, que o próprio usuário reagiu ✅ à prévia ou mandou depois dela uma mensagem só de confirmação ("sim", "ok", "pode gravar"…). Uma resposta em texto vale só para a prévia mais recente anterior a ela. ❌ ou "não" cancela (`cancel` no gateway).
+- **Por que continua seguro contra autoconfirmação:** o LLM não tem como reagir nem escrever no Discord em nome do usuário; uma instrução escondida numa ata ou num arquivo não gera essa reação. O gateway mantém hash, validade de 10 minutos, uso único e três tentativas.
+- **Reinício do Hermes:** as prévias abertas se perdem (estão em memória) e expiram sozinhas; o usuário pede de novo.
+- **Anexo pelo Discord (`attach_file`):** a proposta guarda nome, tamanho e SHA-256; o conteúdo (até 10 MB) só vai no `commit` e precisa bater com o hash. O upload usa a sessão do usuário, então as policies do bucket `task-attachments` se aplicam.
+
+### Arquivos no assistente (13/11/2026)
+- Leitura (`prisma_ler_arquivo`): só arquivos dentro do cache de documentos do Hermes (`/opt/data/cache/documents`, onde o adaptador do Discord grava os anexos da DM). Caminho fora dele ou link simbólico é recusado. TXT, MD, CSV, PDF (pypdf), DOCX (python-docx), XLSX (openpyxl), HTML (lxml, sem scripts) e BPMN (lxml sem entidades externas). O texto volta marcado como dado, não instrução.
+- Geração (`prisma_gerar_arquivo`): TXT, MD, HTML, DOCX, PDF (reportlab), XLSX e BPMN 2.0 com diagrama e layout automático. O arquivo vai direto na DM (upload REST) e não grava nada no Prisma, então não pede prévia.
+- Tudo com as bibliotecas que já vêm na imagem do Hermes; a imagem não foi alterada.
+
+### Arquivos no site (13/11/2026)
+- Tudo no navegador, com bibliotecas carregadas sob demanda (`lib/files/`): pdf.js, mammoth (DOCX), exceljs (XLSX), docx, jsPDF e bpmn-js.
+- Pré-visualização de anexos (tarefa, Base de Conhecimento, Documentos) mostra o conteúdo extraído: PDF em `<canvas>`, DOCX e HTML higienizados num `<iframe sandbox>` sem script e com CSP sem rede, XLSX em tabela e BPMN no visualizador. O download continua sendo o padrão (RNF-04).
+- Importação: contexto do projeto e conteúdo de metodologia aceitam PDF, Word, HTML, Excel e BPMN (viram texto); tarefas e fases de modelo aceitam XLSX além de CSV.
+- Exportação de tarefas: XLSX, CSV, DOCX, PDF, MD, HTML, TXT e BPMN (cronograma com uma raia por escopo).
+
 ### Spikes do Hermes (S1–S3) — 11/11/2026
 
 Executados no Hermes 0.23.0 (2bd378e) da VPS, com um plugin descartável (`prisma_spike`, já removido) e a conta do Iago no `#prisma-ia`.
@@ -81,7 +99,7 @@ Executados no Hermes 0.23.0 (2bd378e) da VPS, com um plugin descartável (`prism
 - A "fachada MCP" vira **plugin nativo do Hermes** (`hermes/plugin-prisma/`). Um servidor MCP roda em outro processo e não recebe o contexto da sessão.
 - As ferramentas expostas ao LLM continuam sem parâmetro de usuário. O plugin injeta o `discord_user_id` na chamada ao `ai-gateway`.
 - Comandos de barra do Hermes: só o dono roda comandos administrativos (`allow_admin_from`). Os demais rodam só `help`, `whoami`, `new`, `stop` e `status`.
-- **Dados de projeto só por DM** (decisão de 11/11/2026). No canal, as respostas ficam visíveis a todos com o papel Prisma IA. Por isso as ferramentas do Prisma só executam em sessão de DM: o plugin confere `HERMES_SESSION_CHAT_TYPE` em código. Fora da DM, devolvem só "converse comigo por mensagem direta", sem chamar o `ai-gateway`. Na DM o LLM recebe os dados normalmente, e a sessão já é isolada por usuário. A confirmação de escrita segue o S3: o código vai por DM separada e não volta ao LLM.
+- **Dados de projeto só por DM** (decisão de 11/11/2026). No canal, as respostas ficam visíveis a todos com o papel Prisma IA. Por isso as ferramentas do Prisma só executam em sessão de DM: o plugin confere `HERMES_SESSION_CHAT_TYPE` em código. Fora da DM, devolvem só "converse comigo por mensagem direta", sem chamar o `ai-gateway`. Na DM o LLM recebe os dados normalmente, e a sessão já é isolada por usuário. A confirmação de escrita segue o S3, revisto em 13/11/2026: o usuário recebe na DM uma prévia do que será gravado e confirma com ✅ (ou respondendo "sim"); o plugin confere isso na API do Discord antes do commit. Não há mais código digitado.
 - **Gates adicionais da Etapa 3:**
   - Pedido de dados no canal é recusado sem chamada ao `ai-gateway`.
   - Na DM, o usuário só recebe dados conforme a RLS.

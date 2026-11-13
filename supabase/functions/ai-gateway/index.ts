@@ -15,7 +15,7 @@ const EXCERPT = 2000;
 const TOOLS = ["list_projects", "list_tasks", "get_task", "search_context", "search_knowledge"] as const;
 // whoami (Etapa 6): só confirma que o autor está vinculado a um perfil ativo e interno, sem abrir sessão.
 // O plugin consulta antes de enviar um áudio ao provedor de transcrição.
-const WRITE_TOOLS = ["propose", "commit", "whoami"] as const;
+const WRITE_TOOLS = ["propose", "commit", "cancel", "whoami"] as const;
 const ROUTINE_TOOLS = ["routine_list_channels", "routine_upsert_context"] as const;
 type Tool = (typeof TOOLS)[number];
 type Args = Record<string, unknown>;
@@ -136,12 +136,19 @@ async function runTool(db: SupabaseClient, tool: Tool, args: Args): Promise<unkn
 }
 
 // ---------------------------------------------------------------------------------------------------------
-// Escrita em duas fases (Etapa 5). propose valida e grava a ação com o hash de um código de 6 dígitos;
-// o plugin entrega o código por DM, fora do contexto do LLM (S3). commit confere código, dono, prazo e uso
-// único e executa com a sessão do usuário: a RLS decide. Nenhuma exclusão.
+// Escrita em duas fases (Etapa 5, revista em 13/11/2026). propose valida, monta a prévia e grava a ação com
+// o hash de um segredo aleatório que só o plugin recebe (nunca o LLM nem o usuário). O plugin posta a prévia
+// na DM e só chama commit depois de conferir no Discord que o usuário reagiu ✅ ou respondeu "sim" (S3).
+// commit confere segredo, dono, prazo e uso único e executa com a sessão do usuário: a RLS decide.
+// cancel descarta a proposta. Nenhuma exclusão.
 // ---------------------------------------------------------------------------------------------------------
 
-const ACTIONS = ["create_task", "update_task", "add_comment", "add_context_entry"] as const;
+const ACTIONS = ["create_task", "update_task", "add_comment", "add_context_entry", "attach_file"] as const;
+// attach_file: a proposta guarda só nome, tamanho e SHA-256; o conteúdo (base64) vem de novo no commit e
+// precisa bater com o hash. Limite menor que o do site (20 MB) por causa do tamanho da requisição.
+const ATTACH_MAX_BYTES = 10 * 1024 * 1024;
+const ATTACH_BUCKET = "task-attachments";
+const SHA_RE = /^[0-9a-f]{64}$/;
 type Action = (typeof ACTIONS)[number];
 type Params = Record<string, string | null>;
 
@@ -196,6 +203,7 @@ function validateAction(action: string, raw: Args): Params {
     update_task: ["task_id", ...UPDATE_FIELDS],
     add_comment: ["task_id", "body"],
     add_context_entry: ["project_id", "kind", "title", "meeting_date", "participants", "body"],
+    attach_file: ["task_id", "file_name", "mime_type", "size_bytes", "sha256"],
   };
   if (!(ACTIONS as readonly string[]).includes(action)) {
     throw new GatewayError(400, "invalid_args", "Ação de escrita não permitida.");
@@ -238,6 +246,24 @@ function validateAction(action: string, raw: Args): Params {
       put("participants", field(raw, "participants", "text", 1000, true));
       p.body = required(raw, "body", "text", 500000);
       break;
+    case "attach_file": {
+      p.task_id = required(raw, "task_id", "uuid");
+      const name = required(raw, "file_name", "text", 200);
+      if (/[\/\\\x00-\x1f]/.test(name) || name.startsWith(".")) throw new GatewayError(400, "invalid_args", "file_name inválido.");
+      p.file_name = name;
+      const mime = field(raw, "mime_type", "text", 150, true);
+      if (mime && !/^[\w.+-]+\/[\w.+-]+$/.test(mime)) throw new GatewayError(400, "invalid_args", "mime_type inválido.");
+      put("mime_type", mime);
+      const size = Number(raw.size_bytes);
+      if (!Number.isInteger(size) || size <= 0 || size > ATTACH_MAX_BYTES) {
+        throw new GatewayError(400, "invalid_args", "O arquivo precisa ter até 10 MB.");
+      }
+      p.size_bytes = String(size);
+      const sha = required(raw, "sha256", "text", 64).toLowerCase();
+      if (!SHA_RE.test(sha)) throw new GatewayError(400, "invalid_args", "sha256 inválido.");
+      p.sha256 = sha;
+      break;
+    }
   }
   if (p.start_date && p.due_date && p.due_date < p.start_date) {
     throw new GatewayError(400, "invalid_args", "O prazo não pode ser anterior ao início.");
@@ -276,53 +302,97 @@ async function categoryName(db: SupabaseClient, id: string, projectId: string): 
   return data.name;
 }
 
-// Resumo em pt-BR mostrado ao usuário na DM junto com o código. Lido com a sessão do usuário: se ele não
-// enxerga o projeto ou a tarefa, a proposta já é recusada aqui.
+// Prévia em pt-BR que o usuário valida na DM (reagindo ✅ ou respondendo "sim"). Mostra tudo o que será
+// gravado, uma linha por campo. Lida com a sessão do usuário: se ele não enxerga o projeto ou a tarefa, a
+// proposta já é recusada aqui.
 async function describe(db: SupabaseClient, action: Action, p: Params): Promise<{ summary: string; project_id: string }> {
-  const changes = async (projectId: string): Promise<string[]> => {
+  const fields = async (projectId: string): Promise<string[]> => {
     const out: string[] = [];
-    if (p.title !== undefined && action === "update_task") out.push(`título: ${quote(p.title!)}`);
-    if (p.status !== undefined) out.push(`status: ${TASK_STATUS_LABEL[p.status!]}`);
-    if (p.assignee_id !== undefined) out.push(`responsável: ${p.assignee_id ? await personName(db, p.assignee_id) : "nenhum"}`);
-    if (p.start_date !== undefined) out.push(`início: ${p.start_date ? brDate(p.start_date) : "sem data"}`);
-    if (p.due_date !== undefined) out.push(`prazo: ${p.due_date ? brDate(p.due_date) : "sem data"}`);
-    if (p.category_id !== undefined) out.push(`escopo: ${p.category_id ? await categoryName(db, p.category_id, projectId) : "nenhum"}`);
-    if (p.description !== undefined) out.push(p.description ? `descrição: ${quote(p.description, 200)}` : "descrição: apagada");
+    if (p.title !== undefined && action === "update_task") out.push(`• Título: ${quote(p.title!, 300)}`);
+    if (p.status !== undefined) out.push(`• Status: ${TASK_STATUS_LABEL[p.status!]}`);
+    if (p.assignee_id !== undefined) out.push(`• Responsável: ${p.assignee_id ? await personName(db, p.assignee_id) : "nenhum"}`);
+    if (p.start_date !== undefined) out.push(`• Início: ${p.start_date ? brDate(p.start_date) : "sem data"}`);
+    if (p.due_date !== undefined) out.push(`• Prazo: ${p.due_date ? brDate(p.due_date) : "sem data"}`);
+    if (p.category_id !== undefined) out.push(`• Escopo: ${p.category_id ? await categoryName(db, p.category_id, projectId) : "nenhum"}`);
+    if (p.description !== undefined) out.push(p.description ? `• Descrição: ${quote(p.description, 300)}` : "• Descrição: apagada");
     return out;
   };
+  const lines = (head: string, rest: string[]) => [head, ...rest].join("\n");
   switch (action) {
     case "create_task": {
       const project = await projectName(db, p.project_id!);
-      const extra = await changes(p.project_id!);
+      const extra = await fields(p.project_id!);
+      if (p.status === undefined) extra.unshift(`• Status: ${TASK_STATUS_LABEL.todo}`);
       return {
         project_id: p.project_id!,
-        summary: `Criar a tarefa ${quote(p.title!)} no projeto ${project}` + (extra.length ? ` (${extra.join("; ")})` : "") + ".",
+        summary: lines(`Criar a tarefa ${quote(p.title!, 300)} no projeto ${project}`, extra),
       };
     }
     case "update_task": {
       const t = await taskRef(db, p.task_id!);
       return {
         project_id: t.project_id,
-        summary: `Alterar a tarefa ${quote(t.title)} do projeto ${t.project}: ${(await changes(t.project_id)).join("; ")}.`,
+        summary: lines(`Alterar a tarefa ${quote(t.title)} do projeto ${t.project}`, await fields(t.project_id)),
       };
     }
     case "add_comment": {
       const t = await taskRef(db, p.task_id!);
       return {
         project_id: t.project_id,
-        summary: `Comentar (interno) na tarefa ${quote(t.title)} do projeto ${t.project}: ${quote(p.body!, 300)}`,
+        summary: lines(`Comentar (interno) na tarefa ${quote(t.title)} do projeto ${t.project}`, [`• Texto: ${quote(p.body!, 600)}`]),
       };
     }
     case "add_context_entry": {
       const project = await projectName(db, p.project_id!);
-      const date = p.meeting_date ? `, reunião de ${brDate(p.meeting_date)}` : "";
+      const rest = [`• Título: ${quote(p.title!)}`];
+      if (p.meeting_date) rest.push(`• Data da reunião: ${brDate(p.meeting_date)}`);
+      if (p.participants) rest.push(`• Participantes: ${p.participants}`);
+      rest.push(`• Conteúdo (${p.body!.length.toLocaleString("pt-BR")} caracteres): ${quote(p.body!, 400)}`);
       return {
         project_id: p.project_id!,
-        summary: `Registrar ${CONTEXT_KIND_LABEL[p.kind!]} ${quote(p.title!)} no contexto do projeto ${project}` +
-          `${date}, com ${p.body!.length.toLocaleString("pt-BR")} caracteres.`,
+        summary: lines(`Registrar ${CONTEXT_KIND_LABEL[p.kind!]} no contexto do projeto ${project}`, rest),
+      };
+    }
+    case "attach_file": {
+      const t = await taskRef(db, p.task_id!);
+      const mb = (Number(p.size_bytes) / 1024 / 1024).toLocaleString("pt-BR", { maximumFractionDigits: 1 });
+      return {
+        project_id: t.project_id,
+        summary: lines(`Anexar um arquivo à tarefa ${quote(t.title)} do projeto ${t.project}`, [
+          `• Arquivo: ${p.file_name}`,
+          `• Tamanho: ${mb} MB`,
+        ]),
       };
     }
   }
+}
+
+function fromBase64(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+async function sha256Bytes(bytes: Uint8Array): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-256", bytes as BufferSource);
+  return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+// Conteúdo do anexo, enviado pelo plugin só no commit. Confere tamanho e hash da proposta.
+async function attachmentBytes(args: Args, p: Params): Promise<Uint8Array> {
+  const b64 = typeof args.content_b64 === "string" ? args.content_b64 : "";
+  if (!b64 || b64.length > Math.ceil(ATTACH_MAX_BYTES / 3) * 4 + 4) throw new GatewayError(400, "invalid_args", "Conteúdo do arquivo ausente ou grande demais.");
+  let bytes: Uint8Array;
+  try {
+    bytes = fromBase64(b64);
+  } catch {
+    throw new GatewayError(400, "invalid_args", "Conteúdo do arquivo inválido.");
+  }
+  if (bytes.length !== Number(p.size_bytes) || (await sha256Bytes(bytes)) !== p.sha256) {
+    throw new GatewayError(409, "file_changed", "O arquivo não é o mesmo da prévia. Peça o anexo de novo.");
+  }
+  return bytes;
 }
 
 async function sha256Hex(text: string): Promise<string> {
@@ -330,11 +400,11 @@ async function sha256Hex(text: string): Promise<string> {
   return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+// Segredo da confirmação: fica só entre gateway e plugin (o usuário valida a prévia com ✅ no Discord, e o
+// plugin confere isso antes de mandar o commit). 128 bits, então não há o que adivinhar.
+const CODE_RE = /^[0-9a-f]{32}$/;
 function newCode(): string {
-  // 6 dígitos uniformes (descarta o excedente de 2^32 para não enviesar).
-  const buf = new Uint32Array(1);
-  do crypto.getRandomValues(buf); while (buf[0] >= 4_294_000_000);
-  return String(buf[0] % 1_000_000).padStart(6, "0");
+  return Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 const codeHash = (pendingId: string, code: string) => sha256Hex(`${pendingId}:${code}`);
@@ -347,7 +417,7 @@ function writeError(error: { code?: string; message?: string }): GatewayError | 
   return null;
 }
 
-async function execute(db: SupabaseClient, userId: string, action: Action, p: Params): Promise<string> {
+async function execute(db: SupabaseClient, userId: string, action: Action, p: Params, file?: Uint8Array): Promise<string> {
   const fail = (error: { code?: string; message?: string }) => {
     throw writeError(error) ?? error;
   };
@@ -391,6 +461,31 @@ async function execute(db: SupabaseClient, userId: string, action: Action, p: Pa
       if (error) fail(error);
       return data!.id;
     }
+    case "attach_file": {
+      // Mesmo caminho e regras do upload pelo site (task-panel): bucket privado, policies de storage e RLS.
+      const t = await taskRef(db, p.task_id!);
+      const safe = p.file_name!.replace(/[^\w.\-]+/g, "_").slice(-120);
+      const path = `${t.project_id}/${p.task_id}/${crypto.randomUUID()}-${safe}`;
+      const up = await db.storage.from(ATTACH_BUCKET).upload(path, file!, { contentType: "application/octet-stream" });
+      if (up.error) throw new GatewayError(403, "forbidden", "Não foi possível anexar: sem permissão nesta tarefa.");
+      const { data, error } = await db
+        .from("task_attachments")
+        .insert({
+          task_id: p.task_id,
+          storage_path: path,
+          file_name: p.file_name,
+          size_bytes: Number(p.size_bytes),
+          mime_type: p.mime_type ?? null,
+          uploaded_by: userId,
+        })
+        .select("id")
+        .single();
+      if (error) {
+        await db.storage.from(ATTACH_BUCKET).remove([path]); // não deixa arquivo órfão
+        fail(error);
+      }
+      return data!.id;
+    }
   }
 }
 
@@ -404,6 +499,10 @@ function loggable(input: Args): Args {
   }
   if (params) out.params = params;
   delete out.confirm_code;
+  if (typeof out.content_b64 === "string") {
+    out.content_b64_chars = out.content_b64.length;
+    delete out.content_b64;
+  }
   return out;
 }
 
@@ -739,9 +838,9 @@ Deno.serve(async (req) => {
     }
     if (new Date(pa.expires_at).getTime() <= Date.now()) {
       await service.from("ai_pending_actions").update({ status: "expired" }).eq("id", pendingId).eq("status", "proposed");
-      throw new GatewayError(410, "expired", "O código expirou (10 minutos). Peça a alteração de novo.");
+      throw new GatewayError(410, "expired", "A prévia expirou (10 minutos) sem confirmação. Peça a alteração de novo.");
     }
-    if (!/^\d{6}$/.test(code) || !(await sameSecret(await codeHash(pendingId, code), pa.code_hash))) {
+    if (!CODE_RE.test(code) || !(await sameSecret(await codeHash(pendingId, code), pa.code_hash))) {
       const attempts = pa.attempts + 1;
       const cancel = attempts >= MAX_ATTEMPTS;
       await service
@@ -751,8 +850,8 @@ Deno.serve(async (req) => {
         .eq("status", "proposed")
         .eq("attempts", pa.attempts);
       throw cancel
-        ? new GatewayError(403, "cancelled", "Código incorreto pela terceira vez. A ação foi cancelada.")
-        : new GatewayError(403, "wrong_code", `Código incorreto. Restam ${MAX_ATTEMPTS - attempts} tentativa(s).`);
+        ? new GatewayError(403, "cancelled", "Confirmação inválida pela terceira vez. A ação foi cancelada.")
+        : new GatewayError(403, "wrong_code", "Confirmação inválida.");
     }
     // Uso único: só uma chamada consegue passar de proposed para committed.
     const { data: claimed, error: claimErr } = await service
@@ -766,7 +865,8 @@ Deno.serve(async (req) => {
     if (!claimed?.length) throw new GatewayError(409, "not_pending", "Esta ação já foi confirmada, cancelada ou expirou.");
 
     try {
-      const entityId = await execute(await openSession(), userId!, input.action, input.params);
+      const file = input.action === "attach_file" ? await attachmentBytes(args, input.params) : undefined;
+      const entityId = await execute(await openSession(), userId!, input.action, input.params, file);
       await audit("executed", { pending_id: pendingId, entity_id: entityId });
       return json({ ok: true, tool, data: { pending_id: pendingId, action: input.action, id: entityId, summary: input.summary } });
     } catch (e) {
@@ -776,7 +876,26 @@ Deno.serve(async (req) => {
     }
   };
 
+  // cancel: o usuário recusou a prévia (❌ ou "não"). Só o dono e só enquanto proposta.
+  const cancel = async () => {
+    const pendingId = uuidArg(args, "pending_id", true)!;
+    const { data, error } = await service
+      .from("ai_pending_actions")
+      .update({ status: "cancelled" })
+      .eq("id", pendingId)
+      .eq("user_id", userId!)
+      .eq("status", "proposed")
+      .select("id, tool, input");
+    if (error) throw error;
+    if (!data?.length) throw new GatewayError(404, "not_pending", "Não há ação pendente com esse id.");
+    auditTool = `cancel:${data[0].tool}`.slice(0, 64);
+    projectArg = (data[0].input as { project_id?: string })?.project_id ?? null;
+    await audit("executed", { pending_id: pendingId, cancelled: true });
+    return json({ ok: true, tool, data: { pending_id: pendingId, cancelled: true } });
+  };
+
   try {
+    if (tool === "cancel") return await cancel();
     if (tool === "whoami") {
       await audit("executed", { linked: true });
       return json({ ok: true, tool, data: { linked: true } });

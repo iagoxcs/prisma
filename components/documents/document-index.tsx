@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 
 import { ChevronDown, ChevronRight, Download } from "lucide-react";
 import { DOC_CATEGORIES, DocCategoryField, useCanCategorize } from "@/components/documents/doc-category";
 import { Pagination } from "@/components/pagination";
+import { PreviewButton } from "@/components/files/file-preview";
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/ui/error-state";
 import { Input } from "@/components/ui/input";
@@ -332,15 +333,18 @@ function DocumentTable({
           {docs.map((d) => (
             <tr key={d.id} className="h-13 border-b last:border-b-0">
               <td className="px-2">
-                <button
-                  type="button"
-                  onClick={() => onDownload(d)}
-                  className="flex min-h-11 max-w-72 items-center gap-2 rounded-md px-2 text-left font-medium hover:underline focus-visible:outline-2 focus-visible:outline-ring"
-                >
-                  <Download className="size-4 shrink-0 text-brand-mid" strokeWidth={1.75} aria-hidden />
-                  <span className="truncate">{d.file_name}</span>
-                  <span className="sr-only">(baixar)</span>
-                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => onDownload(d)}
+                    className="flex min-h-11 max-w-72 items-center gap-2 rounded-md px-2 text-left font-medium hover:underline focus-visible:outline-2 focus-visible:outline-ring"
+                  >
+                    <Download className="size-4 shrink-0 text-brand-mid" strokeWidth={1.75} aria-hidden />
+                    <span className="truncate">{d.file_name}</span>
+                    <span className="sr-only">(baixar)</span>
+                  </button>
+                  <PreviewButton bucket={BUCKET} path={d.storage_path} fileName={d.file_name} onDownload={() => onDownload(d)} />
+                </div>
               </td>
               <td className="px-4 whitespace-nowrap">
                 <DocCategoryField

@@ -31,6 +31,9 @@ const ALIASES: Record<TaskField, string[]> = {
   checklist: ["checklist", "itens", "subtarefas"],
 };
 
+// Colunas que só a exportação gera (calculadas pelo banco): ignoradas sem aviso ao reimportar.
+const EXPORT_ONLY = ["conclusao", "data de conclusao", "concluida em", "concluido em"];
+
 const STATUS_ALIASES: Record<string, TaskStatus> = {
   "a fazer": "todo",
   afazer: "todo",
@@ -160,7 +163,7 @@ export function buildPreview(text: string, categories: Category[], people: Perso
     const key = normalize(h);
     const field = (Object.keys(ALIASES) as TaskField[]).find((f) => ALIASES[f].includes(key));
     if (field && !columns.has(field)) columns.set(field, i);
-    else if (key) preview.unknownColumns.push(h.trim());
+    else if (key && !EXPORT_ONLY.includes(key)) preview.unknownColumns.push(h.trim());
   });
   if (!columns.has("title")) {
     preview.skipped.push({ line: 1, reason: 'Coluna "Título" não encontrada no cabeçalho.' });

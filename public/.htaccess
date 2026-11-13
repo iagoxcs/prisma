@@ -4,6 +4,10 @@
 Options -Indexes
 DirectoryIndex index.html
 
+# O worker do pdf.js (pré-visualização de PDF) é um módulo .mjs. Com nosniff, sem este tipo o navegador
+# recusa carregá-lo.
+AddType text/javascript .mjs
+
 RewriteEngine On
 
 # Força HTTPS (o SSL do subdomínio é emitido no painel da KingHost).

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Download, Paperclip, X } from "lucide-react";
+import { PreviewButton } from "@/components/files/file-preview";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { downloadFile, formatSize } from "@/lib/attachments";
@@ -87,6 +88,7 @@ export function KnowledgeFiles({ itemId, canManage }: { itemId: string; canManag
                 <span className="truncate">{f.file_name}</span>
               </button>
               <span className="flex shrink-0 items-center gap-1 text-muted-foreground">
+                <PreviewButton bucket={BUCKET} path={f.storage_path} fileName={f.file_name} onDownload={() => download(f)} />
                 <span className="num text-xs">{formatSize(f.size_bytes)}</span>
                 {canManage && (
                   <Button variant="ghost" size="icon" aria-label={`Remover arquivo ${f.file_name}`} className="hover:text-destructive" onClick={() => setRemoving(f)}>

@@ -8,7 +8,9 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { saveText } from "@/lib/attachments";
 import { getSupabase } from "@/lib/supabase/client";
-import { readCsvFile, templateCsv, templatePhases } from "@/lib/task-csv";
+import { acceptFor } from "@/lib/files/kinds";
+import { readAsText, readTableAsCsv, ReadError } from "@/lib/files/read";
+import { templateCsv, templatePhases } from "@/lib/task-csv";
 import { MSG_ERROR, SELECT_CLASS, TEXTAREA_CLASS } from "@/lib/ui";
 import { useQuery } from "@/lib/use-query";
 import { cn } from "@/lib/utils";
@@ -19,7 +21,7 @@ const NO_PERMISSION = "Você não tem permissão para editar este item.";
 const LABEL = "block text-[0.8125rem] font-medium text-muted-foreground";
 const MAX_BODY = 200000;
 const MAX_TEMPLATE = 1048576;
-const MD_EXT = [".md", ".markdown"];
+const MD_EXT = acceptFor(["md", "txt", "docx", "pdf", "html"]).split(",");
 
 // "Processos, BPM , processos" → ["processos", "bpm"]
 const parseTags = (raw: string) => [...new Set(raw.split(",").map((t) => t.trim().toLowerCase()).filter(Boolean))];
@@ -63,11 +65,17 @@ export function KnowledgeEditor({
 
   const phases = template ? templatePhases(template) : null;
 
+  // Markdown entra como está; Word, PDF, HTML e TXT são convertidos em Markdown no navegador.
   async function importMarkdown(file: File) {
     setFileError([]);
-    if (!MD_EXT.some((ext) => file.name.toLowerCase().endsWith(ext))) return setFileError(["Formato não suportado. Envie um arquivo .md."]);
-    const text = await file.text();
-    if (!text.trim()) return setFileError(["O arquivo está vazio."]);
+    if (!MD_EXT.some((ext) => file.name.toLowerCase().endsWith(ext))) return setFileError(["Formato não suportado. Envie Markdown, Word, PDF, HTML ou TXT."]);
+    let text: string;
+    try {
+      text = (await readAsText(file)).trim();
+    } catch (e) {
+      return setFileError([e instanceof ReadError ? e.message : "Não foi possível ler o arquivo."]);
+    }
+    if (!text) return setFileError(["O arquivo está vazio."]);
     if (text.length > MAX_BODY) return setFileError(["O arquivo passa de 200 mil caracteres."]);
     setBody(text);
     setSourceFile(file.name);
@@ -75,8 +83,12 @@ export function KnowledgeEditor({
 
   async function importTemplate(file: File) {
     setFileError([]);
-    if (!file.name.toLowerCase().endsWith(".csv")) return setFileError(["Formato não suportado. Envie a planilha em .csv (no Excel: Salvar como → CSV)."]);
-    const text = await readCsvFile(file);
+    let text: string;
+    try {
+      text = await readTableAsCsv(file);
+    } catch (e) {
+      return setFileError([e instanceof ReadError ? e.message : "Não foi possível ler a planilha."]);
+    }
     if (text.length > MAX_TEMPLATE) return setFileError(["A planilha passa de 1 MB."]);
     const check = templatePhases(text);
     if (check.errors.length) return setFileError(check.errors);
@@ -193,14 +205,14 @@ export function KnowledgeEditor({
             </div>
           </div>
           <p className="text-muted-foreground">
-            CSV no formato da importação de tarefas. A coluna <strong>Escopo</strong> é a fase do modelo e é obrigatória em todas as linhas.
+            Excel (.xlsx) ou CSV no formato da importação de tarefas. A coluna <strong>Escopo</strong> é a fase do modelo e é obrigatória em todas as linhas.
           </p>
           {phases && templateFile && <p className="num text-[0.8125rem] text-muted-foreground">{templateFile}</p>}
           {phases && <PhaseList phases={phases.phases} total={phases.tasks} />}
           <input
             ref={csvRef}
             type="file"
-            accept=".csv,text/csv"
+            accept={acceptFor(["csv", "xlsx"])}
             className="sr-only"
             tabIndex={-1}
             aria-hidden
@@ -220,7 +232,7 @@ export function KnowledgeEditor({
             {sourceFile && body && <> · importado de <span className="num">{sourceFile}</span></>}
           </label>
           <Button type="button" variant="outline" onClick={() => mdRef.current?.click()}>
-            <FileUp strokeWidth={1.75} aria-hidden /> Importar .md
+            <FileUp strokeWidth={1.75} aria-hidden /> Importar arquivo
           </Button>
           <input
             ref={mdRef}

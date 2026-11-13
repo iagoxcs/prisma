@@ -3,6 +3,9 @@
 // "2026-10-02" → "02/10/2026"
 export const brDate = (iso: string) => iso.split("-").reverse().join("/");
 
+// timestamptz → "02/10/2026" (dia no fuso de Brasília)
+export const brDateFromTs = (iso: string) => new Date(iso).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
+
 // "2026-10-02" → "02 out" (selo de vencimento, cards)
 export function shortDate(iso: string) {
   return new Date(`${iso}T12:00:00Z`)
