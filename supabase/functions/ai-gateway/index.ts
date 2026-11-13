@@ -407,8 +407,28 @@ function loggable(input: Args): Args {
   return out;
 }
 
+// Chaves de API (migração, passo 2): usa a chave nova "default" quando existe; senão, a legada.
+// Loga só o tipo usado (nova/legada), nunca a chave, para conferir antes de desativar as legadas.
+const keyLogged = new Set<string>();
+function apiKey(kind: "secret" | "publishable"): string {
+  const raw = Deno.env.get(kind === "secret" ? "SUPABASE_SECRET_KEYS" : "SUPABASE_PUBLISHABLE_KEYS");
+  let key: unknown;
+  try {
+    key = raw ? (JSON.parse(raw) as Record<string, unknown>).default : undefined;
+  } catch {
+    key = undefined;
+  }
+  const isNew = typeof key === "string" && key !== "";
+  if (!keyLogged.has(kind)) {
+    keyLogged.add(kind);
+    console.log(`chave de API ${kind}: ${isNew ? "nova" : "legada"}`);
+  }
+  if (isNew) return key as string;
+  return Deno.env.get(kind === "secret" ? "SUPABASE_SERVICE_ROLE_KEY" : "SUPABASE_ANON_KEY")!;
+}
+
 const serviceClient = () =>
-  createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {
+  createClient(Deno.env.get("SUPABASE_URL")!, apiKey("secret"), {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
@@ -572,8 +592,8 @@ Deno.serve(async (req) => {
   if (!UUID_RE.test(requestId)) return json({ code: "invalid_request", error: "request_id inválido." }, 400);
 
   const url = Deno.env.get("SUPABASE_URL")!;
-  const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-  const service = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {
+  const anonKey = apiKey("publishable");
+  const service = createClient(url, apiKey("secret"), {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 

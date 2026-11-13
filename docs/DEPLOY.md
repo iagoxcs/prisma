@@ -132,6 +132,26 @@ bash scripts/check-public-env.sh out
 - Login funciona (se falhar com erro de redirecionamento, revise o item 1.1).
 - `https://prisma.ambienteconsulta.com.br/version.txt` mostra o commit do último deploy.
 
+## 6. Migração de chaves
+
+O Supabase substituiu as chaves de API `anon` e `service_role` (JWTs assinados pela chave HS256 do projeto) pelas chaves `sb_publishable_…` e `sb_secret_…`. As legadas funcionam até o fim de 2026. Os JWT de sessão já são assinados em ES256 desde 05/10/2026.
+
+| Passo | O quê | Situação |
+|---|---|---|
+| 1 | Site com a chave publishable: secret `NEXT_PUBLIC_SUPABASE_ANON_KEY` do GitHub = `sb_publishable_…` (o nome do secret ficou o antigo) | Feito em 26/10/2026 |
+| 2 | Edge Functions com as chaves novas (`SUPABASE_SECRET_KEYS` e `SUPABASE_PUBLISHABLE_KEYS`, chave `default`), com retorno às legadas se faltarem | Feito em 13/11/2026 |
+| 3 | Desativar as legadas e revogar a HS256 | Após uma semana sem erro |
+
+Quem depende de chave de API: só as três Edge Functions. O `pg_cron` chama o `deadline-emails` com o cabeçalho `x-cron-secret`; o Hermes e a rotina chamam o `ai-gateway` com `HERMES_GATEWAY_SECRET` e `ROUTINE_SECRET`; o deploy usa a senha do banco e o token da CLI.
+
+**Passo 3, no painel do Supabase**, só depois de uma semana sem erro nos logs das funções:
+
+1. Em *Edge Functions → Logs*, conferir em `admin-users`, `ai-gateway` e `deadline-emails` as linhas `chave de API secret: nova` e `chave de API publishable: nova`. Nenhuma pode dizer `legada`.
+2. *Settings → API Keys → Legacy API keys*: desativar `anon` e `service_role`. É reversível.
+3. Testar logo em seguida: login no site, *Configurações → Usuários* (usa o `admin-users`), uma consulta ao bot por DM (usa o `ai-gateway`) e, no dia seguinte, o relatório da rotina em `#prisma-operacao` e os e-mails de prazo. Se algo falhar, reativar as legadas e investigar.
+4. Depois de mais alguns dias sem erro: *Settings → JWT Signing Keys → Previously used*, revogar a chave HS256. **Irreversível**: invalida qualquer token assinado por ela, inclusive as chaves legadas.
+5. Opcional: remover das funções o retorno às chaves legadas.
+
 ---
 
 ## Anexo: Netlify (descontinuado)
