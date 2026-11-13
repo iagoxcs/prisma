@@ -97,6 +97,53 @@ export type Database = {
           },
         ]
       }
+      ai_pending_actions: {
+        Row: {
+          attempts: number
+          code_hash: string
+          committed_at: string | null
+          created_at: string
+          expires_at: string
+          id: string
+          input: Json
+          status: string
+          tool: string
+          user_id: string
+        }
+        Insert: {
+          attempts?: number
+          code_hash: string
+          committed_at?: string | null
+          created_at?: string
+          expires_at: string
+          id?: string
+          input: Json
+          status?: string
+          tool: string
+          user_id: string
+        }
+        Update: {
+          attempts?: number
+          code_hash?: string
+          committed_at?: string | null
+          created_at?: string
+          expires_at?: string
+          id?: string
+          input?: Json
+          status?: string
+          tool?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_pending_actions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       app_settings: {
         Row: {
           description: string | null
