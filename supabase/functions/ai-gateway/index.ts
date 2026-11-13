@@ -1,17 +1,22 @@
-// ai-gateway: única porta entre o Hermes (assistente no Discord) e o banco. Etapa 3: só leitura.
-// Chamado servidor a servidor pelo plugin do Hermes, autenticado por x-hermes-secret (verify_jwt = false).
-// O discord_user_id vem do contexto da sessão do Hermes, nunca do LLM (spike S1).
-// A consulta roda com a sessão do próprio usuário: a RLS decide o que ele vê.
+// ai-gateway: única porta entre o Hermes (assistente no Discord) e o banco.
+// Chamado servidor a servidor (verify_jwt = false) por dois clientes, cada um com o seu segredo:
+// - plugin do Hermes (x-hermes-secret): ferramentas de leitura. O discord_user_id vem do contexto da
+//   sessão do Hermes, nunca do LLM (spike S1), e a consulta roda com a sessão do próprio usuário (RLS).
+// - rotina diária (x-routine-secret, Etapa 4): só lista os canais mapeados e grava o resumo do dia.
+//   Não há usuário: roda com o service_role, restrita a essas duas operações (N5).
 import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
 
 const RATE_LIMIT_PER_MIN = 30; // DV7
 const EXCERPT = 2000;
 const TOOLS = ["list_projects", "list_tasks", "get_task", "search_context", "search_knowledge"] as const;
+const ROUTINE_TOOLS = ["routine_list_channels", "routine_upsert_context"] as const;
 type Tool = (typeof TOOLS)[number];
 type Args = Record<string, unknown>;
 type Status = "executed" | "denied" | "error";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const CHANNEL_RE = /^[0-9]{17,20}$/;
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -123,8 +128,150 @@ async function runTool(db: SupabaseClient, tool: Tool, args: Args): Promise<unkn
   }
 }
 
+const serviceClient = () =>
+  createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+
+function limitedText(args: Args, name: string, max: number, required: boolean): string | undefined {
+  const v = str(args, name, required);
+  if (v !== undefined && v.length > max) {
+    throw new GatewayError(400, "invalid_args", `${name} deve ter até ${max} caracteres.`);
+  }
+  return v;
+}
+
+function dateArg(args: Args): string {
+  const v = str(args, "date", true)!;
+  const d = new Date(`${v}T00:00:00Z`);
+  if (!DATE_RE.test(v) || Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== v) {
+    throw new GatewayError(400, "invalid_args", "date deve estar no formato AAAA-MM-DD.");
+  }
+  return v;
+}
+
+// Operações da rotina. Escrita só em project_context_entries (kind 'discord'), idempotente por source_ref.
+async function runRoutineTool(db: SupabaseClient, tool: string, args: Args): Promise<unknown[] | Record<string, unknown>> {
+  if (tool === "routine_list_channels") {
+    const { data, error } = await db
+      .from("projects")
+      .select("id, name, discord_channel_id")
+      .not("discord_channel_id", "is", null)
+      .not("status", "in", "(concluido,cancelado)")
+      .order("name");
+    if (error) throw error;
+    return (data ?? []).map((p) => ({ project_id: p.id, name: p.name, discord_channel_id: p.discord_channel_id }));
+  }
+
+  const projectId = uuidArg(args, "project_id", true)!;
+  const channelId = str(args, "channel_id", true)!;
+  if (!CHANNEL_RE.test(channelId)) throw new GatewayError(400, "invalid_args", "channel_id inválido.");
+  const date = dateArg(args);
+  const title = limitedText(args, "title", 200, true)!;
+  const participants = limitedText(args, "participants", 1000, false) ?? null;
+  const body = limitedText(args, "body", 500000, true)!;
+
+  const { data: project, error: projErr } = await db
+    .from("projects")
+    .select("id, discord_channel_id")
+    .eq("id", projectId)
+    .maybeSingle();
+  if (projErr) throw projErr;
+  if (!project || project.discord_channel_id !== channelId) {
+    throw new GatewayError(400, "channel_mismatch", "O canal não está vinculado a este projeto.");
+  }
+
+  const sourceRef = `${channelId}:${date}`;
+  const { data: existing, error: exErr } = await db
+    .from("project_context_entries")
+    .select("id, project_id")
+    .eq("source_ref", sourceRef)
+    .maybeSingle();
+  if (exErr) throw exErr;
+  // Canal remapeado para outro projeto: o resumo antigo fica onde está, não é movido.
+  if (existing && existing.project_id !== projectId) {
+    throw new GatewayError(409, "source_ref_conflict", "Já existe um resumo deste canal e dia em outro projeto.");
+  }
+
+  const { data, error } = await db
+    .from("project_context_entries")
+    .upsert(
+      { project_id: projectId, kind: "discord", title, body, participants, meeting_date: date, source_ref: sourceRef, created_by: null },
+      { onConflict: "source_ref" },
+    )
+    .select("id")
+    .single();
+  if (error) throw error;
+  return { id: data.id, source_ref: sourceRef, created: !existing };
+}
+
+async function handleRoutine(req: Request, given: string): Promise<Response> {
+  const secret = Deno.env.get("ROUTINE_SECRET") ?? "";
+  if (!secret || !given || req.headers.has("x-hermes-secret") || !(await sameSecret(given, secret))) {
+    return json({ code: "unauthorized", error: "Não autorizado." }, 401);
+  }
+
+  let body: { discord_user_id?: unknown; tool?: unknown; args?: unknown; request_id?: unknown };
+  try {
+    body = await req.json();
+  } catch {
+    return json({ code: "invalid_json", error: "JSON inválido." }, 400);
+  }
+  if (body.discord_user_id !== undefined) {
+    return json({ code: "invalid_request", error: "A rotina não envia discord_user_id." }, 400);
+  }
+  const requestId = typeof body.request_id === "string" ? body.request_id : "";
+  const tool = typeof body.tool === "string" ? body.tool : "";
+  const args: Args = body.args && typeof body.args === "object" && !Array.isArray(body.args) ? (body.args as Args) : {};
+  if (!UUID_RE.test(requestId)) return json({ code: "invalid_request", error: "request_id inválido." }, 400);
+
+  const service = serviceClient();
+  const projectArg = typeof args.project_id === "string" && UUID_RE.test(args.project_id) ? args.project_id : null;
+  // O corpo do resumo não vai para o log (até 500 mil caracteres): só o tamanho.
+  const { body: summary, ...rest } = args;
+  const logged = typeof summary === "string" ? { ...rest, body_chars: summary.length } : rest;
+
+  const audit = async (status: Status, result: Record<string, unknown>) => {
+    const { error } = await service.from("ai_actions_log").insert({
+      source: "routine",
+      status,
+      tool: tool.slice(0, 64) || "(vazio)",
+      user_id: null,
+      input: { args: logged },
+      result,
+      request_id: requestId,
+      project_id: projectArg,
+      external_ref: null,
+    });
+    if (error) console.error(`ai_actions_log: falha ao gravar (${error.code ?? "sem código"})`);
+  };
+
+  if (!(ROUTINE_TOOLS as readonly string[]).includes(tool)) {
+    await audit("denied", { code: "tool_not_allowed" });
+    return json({ code: "tool_not_allowed", error: "Ferramenta não permitida para a rotina." }, 403);
+  }
+
+  try {
+    const data = await runRoutineTool(service, tool, args);
+    const n = Array.isArray(data) ? data.length : 1;
+    await audit("executed", Array.isArray(data) ? { count: n } : { count: n, created: data.created });
+    return json({ ok: true, tool, count: n, data });
+  } catch (e) {
+    if (e instanceof GatewayError) {
+      await audit("denied", { code: e.code });
+      return json({ code: e.code, error: e.message }, e.status);
+    }
+    console.error(`ai-gateway: ${tool} falhou (${e instanceof Error ? e.message : "erro"})`);
+    await audit("error", { code: "internal" });
+    return json({ code: "internal", error: "Erro interno." }, 500);
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ code: "method_not_allowed", error: "Método não permitido." }, 405);
+
+  const routineGiven = req.headers.get("x-routine-secret");
+  if (routineGiven !== null) return handleRoutine(req, routineGiven);
 
   const secret = Deno.env.get("HERMES_GATEWAY_SECRET") ?? "";
   const given = req.headers.get("x-hermes-secret") ?? "";

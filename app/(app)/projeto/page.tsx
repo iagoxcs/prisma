@@ -91,7 +91,7 @@ function ProjetoDetalhe() {
     () =>
       getSupabase()
         .from("projects")
-        .select("id, client_id, name, status, manager_id, start_date, end_date, clients(name)")
+        .select("id, client_id, name, status, manager_id, start_date, end_date, discord_channel_id, clients(name)")
         .eq("id", id)
         .maybeSingle()
         .then((r) => ({ data: r.data as unknown as Project | null, error: r.error })),
@@ -186,7 +186,7 @@ function ProjetoDetalhe() {
       {/* Recolhido com hidden (sem desmontar): fechar e reabrir mantém o que está sendo editado. */}
       {isManager && (
         <div id="project-editor" hidden={!editing}>
-          <ProjectEditor key={p.id + p.status + p.start_date + p.end_date} project={p} onSaved={project.reload} />
+          <ProjectEditor key={p.id + p.status + p.start_date + p.end_date + p.discord_channel_id} project={p} onSaved={project.reload} />
         </div>
       )}
 
@@ -296,11 +296,12 @@ function ProjectSkeleton() {
   );
 }
 
-// Status e período do projeto (alimentam o cronograma de portfólio).
+// Status e período do projeto (alimentam o cronograma de portfólio) e canal do Discord (rotina diária).
 function ProjectEditor({ project, onSaved }: { project: Project; onSaved: () => void }) {
   const [status, setStatus] = useState<ProjectStatus>(project.status);
   const [start, setStart] = useState(project.start_date ?? "");
   const [end, setEnd] = useState(project.end_date ?? "");
+  const [channel, setChannel] = useState(project.discord_channel_id ?? "");
   const [error, setError] = useState<string | null>(null);
 
   async function save(e: FormEvent) {
@@ -308,9 +309,15 @@ function ProjectEditor({ project, onSaved }: { project: Project; onSaved: () => 
     setError(null);
     const { error } = await getSupabase()
       .from("projects")
-      .update({ status, start_date: start || null, end_date: end || null })
+      .update({ status, start_date: start || null, end_date: end || null, discord_channel_id: channel.trim() || null })
       .eq("id", project.id);
-    if (error) return setError(error.code === "23514" ? "O fim não pode ser anterior ao início." : error.message);
+    if (error) {
+      if (error.code === "23505") return setError("Este canal já está vinculado a outro projeto.");
+      if (error.code === "23514" && error.message.includes("discord_channel_id")) {
+        return setError("Informe só os números do ID do canal.");
+      }
+      return setError(error.code === "23514" ? "O fim não pode ser anterior ao início." : error.message);
+    }
     onSaved();
   }
 
@@ -332,7 +339,23 @@ function ProjectEditor({ project, onSaved }: { project: Project; onSaved: () => 
         <span className="block text-[0.8125rem] font-medium text-muted-foreground">Fim</span>
         <Input type="date" className="num" value={end} onChange={(e) => setEnd(e.target.value)} />
       </label>
+      <label className="space-y-1.5">
+        <span className="block text-[0.8125rem] font-medium text-muted-foreground">Canal do Discord</span>
+        <Input
+          className="num w-56"
+          inputMode="numeric"
+          pattern="[0-9]{17,20}"
+          maxLength={20}
+          title="Informe só os números do ID do canal."
+          aria-describedby="project-discord-help"
+          value={channel}
+          onChange={(e) => setChannel(e.target.value)}
+        />
+      </label>
       <Button type="submit" variant="outline">Salvar projeto</Button>
+      <p id="project-discord-help" className="w-full text-[0.8125rem] text-muted-foreground">
+        ID do canal do projeto no Discord. Usado no resumo diário das conversas.
+      </p>
       {error && <p role="alert" className={cn("w-full", MSG_ERROR)}>{error}</p>}
     </form>
   );

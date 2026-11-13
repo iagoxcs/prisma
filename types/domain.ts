@@ -115,6 +115,7 @@ export interface Project {
   manager_id: string | null;
   start_date: string | null;
   end_date: string | null;
+  discord_channel_id?: string | null; // só carregado na página do projeto (editor)
   clients?: { name: string } | null;
 }
 
@@ -237,12 +238,14 @@ export interface KnowledgeFile {
 }
 
 // Contexto do projeto (reuniões). Só internos membros do projeto.
-export type ContextKind = "transcricao" | "ata" | "anotacao";
+// "discord": resumo diário do canal do projeto, gravado só pela rotina (não aparece na criação manual).
+export type ContextKind = "transcricao" | "ata" | "anotacao" | "discord";
 
 export const CONTEXT_KIND_LABEL: Record<ContextKind, string> = {
   transcricao: "Transcrição",
   ata: "Ata",
   anotacao: "Anotação",
+  discord: "Discord",
 };
 
 export interface ProjectContextEntry {

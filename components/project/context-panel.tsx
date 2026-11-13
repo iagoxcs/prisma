@@ -299,8 +299,9 @@ function EntryForm({
       <div className="flex flex-wrap gap-3">
         <label className="space-y-1.5">
           <span className={LABEL}>Tipo</span>
-          <Select className={SELECT_CLASS} value={d.kind} onChange={(e) => set("kind", e.target.value as ContextKind)}>
-            {(Object.keys(CONTEXT_KIND_LABEL) as ContextKind[]).map((k) => (
+          {/* Registro da rotina do Discord mantém o tipo; na criação manual o tipo "Discord" não é oferecido. */}
+          <Select className={SELECT_CLASS} value={d.kind} disabled={d.kind === "discord"} onChange={(e) => set("kind", e.target.value as ContextKind)}>
+            {(Object.keys(CONTEXT_KIND_LABEL) as ContextKind[]).filter((k) => k !== "discord" || d.kind === "discord").map((k) => (
               <option key={k} value={k}>{CONTEXT_KIND_LABEL[k]}</option>
             ))}
           </Select>

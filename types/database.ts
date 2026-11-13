@@ -541,6 +541,7 @@ export type Database = {
           project_id: string
           search: unknown
           source_file_name: string | null
+          source_ref: string | null
           title: string
           updated_at: string
         }
@@ -555,6 +556,7 @@ export type Database = {
           project_id: string
           search?: unknown
           source_file_name?: string | null
+          source_ref?: string | null
           title: string
           updated_at?: string
         }
@@ -569,6 +571,7 @@ export type Database = {
           project_id?: string
           search?: unknown
           source_file_name?: string | null
+          source_ref?: string | null
           title?: string
           updated_at?: string
         }
@@ -692,6 +695,7 @@ export type Database = {
         Row: {
           client_id: string | null
           created_at: string
+          discord_channel_id: string | null
           end_date: string | null
           id: string
           manager_id: string | null
@@ -703,6 +707,7 @@ export type Database = {
         Insert: {
           client_id?: string | null
           created_at?: string
+          discord_channel_id?: string | null
           end_date?: string | null
           id?: string
           manager_id?: string | null
@@ -714,6 +719,7 @@ export type Database = {
         Update: {
           client_id?: string | null
           created_at?: string
+          discord_channel_id?: string | null
           end_date?: string | null
           id?: string
           manager_id?: string | null
