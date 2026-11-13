@@ -4,7 +4,10 @@ Código e configuração do Hermes (assistente do Prisma no Discord), versionado
 
 ## `plugin-prisma/`
 
-Plugin nativo com as ferramentas de leitura do Prisma: `prisma_listar_projetos`, `prisma_listar_tarefas`, `prisma_ver_tarefa`, `prisma_buscar_contexto` e `prisma_buscar_conhecimento`. Cada uma chama o `ai-gateway` (Supabase Edge Function).
+Plugin nativo com as ferramentas do Prisma. Cada uma chama o `ai-gateway` (Supabase Edge Function).
+
+- **Leitura:** `prisma_listar_projetos`, `prisma_listar_tarefas`, `prisma_ver_tarefa`, `prisma_buscar_contexto` e `prisma_buscar_conhecimento`.
+- **Escrita com confirmação (Etapa 5):** `prisma_criar_tarefa`, `prisma_atualizar_tarefa`, `prisma_comentar_tarefa` (sempre interno) e `prisma_registrar_contexto` só propõem. O gateway devolve um código de 6 dígitos, que o plugin envia ao usuário numa DM separada (API REST do Discord, `DISCORD_BOT_TOKEN`) e tira da resposta ao LLM (S3). O usuário digita o código na conversa e `prisma_confirmar_acao` executa com a sessão dele. O código vale 10 minutos, é de uso único e três erros cancelam a ação. Não há exclusão.
 
 - O autor vem do contexto da sessão do Hermes (`HERMES_SESSION_USER_ID`), nunca de argumento do LLM (spike S1).
 - Fora de uma DM do Discord, a ferramenta recusa sem chamar o gateway, porque dados de projeto só circulam por DM.

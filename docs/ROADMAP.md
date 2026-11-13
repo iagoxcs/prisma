@@ -47,12 +47,12 @@ Legenda: ✅ feito · 🟡 parcial · ⬜ pendente
 - ⬜ Parâmetros futuros conforme as fases 4–5 (IA, metas de indicadores)
 
 ## Fase 4 — IA (RF-03–05, 13–16)
-- ⬜ Etapa 0 — Preparação
-- ⬜ Etapa 1 — VPS e Hermes
-- ⬜ Etapa 2 — Login com Discord
-- ⬜ Etapa 3 — Gateway de leitura
-- ⬜ Etapa 4 — Canal por projeto e rotina diária
-- ⬜ Etapa 5 — Escrita com confirmação
+- ✅ Etapa 0 — Preparação
+- ✅ Etapa 1 — VPS e Hermes
+- ✅ Etapa 2 — Login com Discord
+- ✅ Etapa 3 — Gateway de leitura
+- 🟡 Etapa 4 — Canal por projeto e rotina diária (em produção desde 13/11/2026; gate: 7 execuções seguidas)
+- 🟡 Etapa 5 — Escrita com confirmação (criar e alterar tarefa, comentário interno, registro de contexto; `generate_report` adiado até existir a tela de relatórios)
 - ⬜ Etapa 6 — Áudio
 - ⬜ Trilha paralela — Migração das chaves de API
 
