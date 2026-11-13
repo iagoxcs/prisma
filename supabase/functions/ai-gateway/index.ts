@@ -413,15 +413,19 @@ const keyLogged = new Set<string>();
 function apiKey(kind: "secret" | "publishable"): string {
   const raw = Deno.env.get(kind === "secret" ? "SUPABASE_SECRET_KEYS" : "SUPABASE_PUBLISHABLE_KEYS");
   let key: unknown;
+  let why = "variável ausente";
   try {
-    key = raw ? (JSON.parse(raw) as Record<string, unknown>).default : undefined;
+    const keys = raw ? (JSON.parse(raw) as Record<string, unknown>) : undefined;
+    key = keys?.default;
+    if (keys) why = `sem "default"; nomes: ${Object.keys(keys).join(", ") || "nenhum"}`;
   } catch {
     key = undefined;
+    why = "JSON inválido";
   }
   const isNew = typeof key === "string" && key !== "";
   if (!keyLogged.has(kind)) {
     keyLogged.add(kind);
-    console.log(`chave de API ${kind}: ${isNew ? "nova" : "legada"}`);
+    console.log(`chave de API ${kind}: ${isNew ? "nova" : `legada (${why})`}`);
   }
   if (isNew) return key as string;
   return Deno.env.get(kind === "secret" ? "SUPABASE_SERVICE_ROLE_KEY" : "SUPABASE_ANON_KEY")!;
