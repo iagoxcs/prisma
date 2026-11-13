@@ -3,6 +3,25 @@
 // Um resumo por pessoa com as notificações due_soon/overdue ainda não enviadas.
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
+// Chaves de API (migração, passo 2): usa a chave nova "default" quando existe; senão, a legada.
+// Loga só o tipo usado (nova/legada), nunca a chave, para conferir antes de desativar as legadas.
+let keyLogged = false;
+function secretKey(): string {
+  const raw = Deno.env.get("SUPABASE_SECRET_KEYS");
+  let key: unknown;
+  try {
+    key = raw ? (JSON.parse(raw) as Record<string, unknown>).default : undefined;
+  } catch {
+    key = undefined;
+  }
+  const isNew = typeof key === "string" && key !== "";
+  if (!keyLogged) {
+    keyLogged = true;
+    console.log(`chave de API secret: ${isNew ? "nova" : "legada"}`);
+  }
+  return isNew ? (key as string) : Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+}
+
 const SITE_URL = "https://prisma.ambienteconsulta.com.br";
 const BATCH = 100; // limite da API /emails/batch do Resend
 
@@ -17,7 +36,7 @@ const esc = (s: string) =>
 Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "método não permitido" }, 405);
 
-  const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+  const admin = createClient(Deno.env.get("SUPABASE_URL")!, secretKey());
 
   const { data: ok } = await admin.rpc("check_cron_secret", { secret: req.headers.get("x-cron-secret") ?? "" });
   if (ok !== true) return json({ error: "não autorizado" }, 401);

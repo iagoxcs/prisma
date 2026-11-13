@@ -2,6 +2,26 @@
 // Único lugar que usa service_role. Só administradores ativos podem chamar.
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
+// Chaves de API (migração, passo 2): usa a chave nova "default" quando existe; senão, a legada.
+// Loga só o tipo usado (nova/legada), nunca a chave, para conferir antes de desativar as legadas.
+const keyLogged = new Set<string>();
+function apiKey(kind: "secret" | "publishable"): string {
+  const raw = Deno.env.get(kind === "secret" ? "SUPABASE_SECRET_KEYS" : "SUPABASE_PUBLISHABLE_KEYS");
+  let key: unknown;
+  try {
+    key = raw ? (JSON.parse(raw) as Record<string, unknown>).default : undefined;
+  } catch {
+    key = undefined;
+  }
+  const isNew = typeof key === "string" && key !== "";
+  if (!keyLogged.has(kind)) {
+    keyLogged.add(kind);
+    console.log(`chave de API ${kind}: ${isNew ? "nova" : "legada"}`);
+  }
+  if (isNew) return key as string;
+  return Deno.env.get(kind === "secret" ? "SUPABASE_SERVICE_ROLE_KEY" : "SUPABASE_ANON_KEY")!;
+}
+
 const cors = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-client-info",
@@ -49,13 +69,13 @@ Deno.serve(async (req) => {
   const authHeader = req.headers.get("Authorization") ?? "";
 
   // Identidade do chamador: client com o JWT dele; is_admin() respeita perfil ativo.
-  const caller = createClient(url, Deno.env.get("SUPABASE_ANON_KEY")!, {
+  const caller = createClient(url, apiKey("publishable"), {
     global: { headers: { Authorization: authHeader } },
   });
   const { data: isAdmin, error: authErr } = await caller.rpc("is_admin");
   if (authErr || isAdmin !== true) return json({ error: "acesso restrito a administradores" }, 403);
 
-  const admin = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+  const admin = createClient(url, apiKey("secret"));
 
   let body: Record<string, string>;
   try {
