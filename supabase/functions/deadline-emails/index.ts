@@ -9,15 +9,19 @@ let keyLogged = false;
 function secretKey(): string {
   const raw = Deno.env.get("SUPABASE_SECRET_KEYS");
   let key: unknown;
+  let why = "variável ausente";
   try {
-    key = raw ? (JSON.parse(raw) as Record<string, unknown>).default : undefined;
+    const keys = raw ? (JSON.parse(raw) as Record<string, unknown>) : undefined;
+    key = keys?.default;
+    if (keys) why = `sem "default"; nomes: ${Object.keys(keys).join(", ") || "nenhum"}`;
   } catch {
     key = undefined;
+    why = "JSON inválido";
   }
   const isNew = typeof key === "string" && key !== "";
   if (!keyLogged) {
     keyLogged = true;
-    console.log(`chave de API secret: ${isNew ? "nova" : "legada"}`);
+    console.log(`chave de API secret: ${isNew ? "nova" : `legada (${why})`}`);
   }
   return isNew ? (key as string) : Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 }
