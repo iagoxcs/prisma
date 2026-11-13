@@ -1,0 +1,10 @@
+[Unit]
+Description=Prisma: rotina diária às 00:30 (America/Sao_Paulo), resumindo o dia anterior
+
+[Timer]
+OnCalendar=*-*-* 00:30:00 America/Sao_Paulo
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target
