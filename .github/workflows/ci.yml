@@ -17,8 +17,39 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
+      - run: npm test
       - run: npm run build
         env:
           # Valores fictícios: o build só embute as variáveis públicas.
           NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder
+
+  # Banco local com migrações e seed; roda os scripts de supabase/verify (cada um em transação com ROLLBACK).
+  db:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: supabase/setup-cli@v1
+        with:
+          # Versão fixa (= devDependency "supabase"), igual à dos workflows de deploy.
+          version: 2.120.0
+      # Prefere só o Postgres (db start). Se as migrações não tiverem sido aplicadas todas,
+      # sobe a stack sem os serviços que os scripts não usam e reaplica migrações + seed.
+      - name: Banco local (migrações e seed)
+        run: |
+          supabase db start
+          expected=$(ls supabase/migrations/*.sql | wc -l)
+          applied=$(psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -tAc \
+            "select count(*) from supabase_migrations.schema_migrations" 2>/dev/null || echo 0)
+          echo "Migrações aplicadas: $applied de $expected"
+          if [ "$applied" != "$expected" ]; then
+            echo "::warning::db start não aplicou todas as migrações; usando start -x + db reset."
+            supabase stop --no-backup
+            supabase start -x realtime,imgproxy,kong,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
+            supabase db reset
+          fi
+      - name: Scripts de verificação
+        run: npm run db:verify

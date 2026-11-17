@@ -30,8 +30,8 @@ Next.js (App Router) + TypeScript + Tailwind + shadcn/ui · Supabase (Auth, Post
 - Interface em pt-BR; usar o termo **"Líderes"**. Colunas/identificadores em inglês (`title`, `due_date`, `assignee_id`).
 - Papéis: `admin`, `gerente`, `lider`, `consultor`, `externo` (matriz em `docs/ARQUITETURA.md`).
 - Datas/horas: `timestamptz` no banco; exibir em America/Sao_Paulo.
-- Há um único projeto Supabase e ele é produção: proibido `apply_migration` pelo MCP; migrações chegam ao banco só pelo workflow de deploy (`supabase db push`) após merge em `main`.
-- Supabase MCP só para leitura (consultas, logs, advisors, `list_migrations`) no projeto de produção. Plan mode para schema, permissões e ai-gateway.
+- Dois projetos Supabase: produção (`jipaumhvkldxnmwfdmji`) e homologação (`prisma-hml`, `acdqtnquxnrirqgnygsu`). Migrações chegam aos dois só pelos workflows (homologação: push na branch `homolog`; produção: merge em `main`). Proibido `apply_migration` pelo MCP nos dois.
+- Supabase MCP: em produção, só leitura (consultas, logs, advisors, `list_migrations`). Na homologação, também `execute_sql` para dados de teste (insert, update, delete); proibido DDL (create, alter, drop, grant, policy) pelo MCP, porque o schema só muda por migração. Plan mode para schema, permissões e ai-gateway.
 
 ## Comandos
 ```

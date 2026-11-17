@@ -1,0 +1,39 @@
+name: Deploy homologação
+
+# Todo push na branch homolog publica migrações e Edge Functions no projeto prisma-hml.
+# Sem site: o front da homologação roda local (npm run dev com .env.local apontando para a hml).
+# Secrets ficam no environment "homolog" (GitHub → Settings → Environments). Ver docs/DEPLOY.md, seção 7.
+on:
+  push:
+    branches: [homolog]
+  workflow_dispatch:
+
+# Um deploy por vez, na ordem dos pushes; nunca cancela um deploy em andamento.
+concurrency:
+  group: deploy-homolog
+  cancel-in-progress: false
+
+jobs:
+  supabase:
+    name: Supabase (migrações e Edge Functions)
+    runs-on: ubuntu-latest
+    environment: homolog
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          # Versão fixa (= devDependency "supabase"), igual à de deploy.yml.
+          version: 2.120.0
+      - name: Vincular projeto
+        run: supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
+      - name: Migrações pendentes (prévia)
+        run: supabase db push --dry-run --password "$SUPABASE_DB_PASSWORD"
+      # Falha se o histórico remoto tiver versões que não existem em supabase/migrations/ (ver CLAUDE.md).
+      - name: Aplicar migrações
+        run: supabase db push --password "$SUPABASE_DB_PASSWORD"
+      - name: Publicar Edge Functions
+        run: supabase functions deploy --project-ref "$SUPABASE_PROJECT_REF" --use-api

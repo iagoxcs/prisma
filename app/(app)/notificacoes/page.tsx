@@ -16,6 +16,7 @@ const TYPE_LABEL: Record<AppNotification["type"], string> = {
   overdue: "Prazo vencido",
   comment: "Comentário",
   mention: "Menção",
+  missing_due_date: "Tarefas sem prazo",
 };
 
 export default function NotificacoesPage() {

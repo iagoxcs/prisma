@@ -72,6 +72,18 @@ Também dá para fazer em Supabase → Edge Functions → *Secrets*. A chave do 
 
 **Testar:** em Integrations → Cron → `prisma-deadline-emails` → *Run*; resultado em Edge Functions → `deadline-emails` → *Logs* (`{ sent, failed }`). Sem pendências, a resposta é `sent: 0`. Se der 500 com "defina RESEND_API_KEY", falta o passo c.
 
+### 1.3 URL das funções por ambiente
+O job `prisma-deadline-emails` lê a base das Edge Functions do segredo `prisma_functions_url` no Vault (migração `20261117202543_cron_functions_url`). Sem o segredo, o job roda sem chamar nada e os e-mails de prazo param sem erro aparente.
+
+Crie uma vez por ambiente, no SQL Editor, trocando `<ref>` (produção `jipaumhvkldxnmwfdmji`; homologação `acdqtnquxnrirqgnygsu`):
+```sql
+select vault.create_secret('https://<ref>.supabase.co/functions/v1', 'prisma_functions_url', 'Base das Edge Functions chamadas pelo pg_cron');
+```
+
+> **Atenção:** crie o segredo em produção **antes do merge** da PR que traz essa migração. Sem ele, os e-mails de prazo param a partir do deploy.
+
+Para conferir: `select name from vault.secrets where name = 'prisma_functions_url';`
+
 ---
 
 ## 2. Segredos do GitHub (uma vez)
@@ -151,6 +163,40 @@ Quem depende de chave de API: só as três Edge Functions. O `pg_cron` chama o `
 3. Testar logo em seguida: login no site, *Configurações → Usuários* (usa o `admin-users`), uma consulta ao bot por DM (usa o `ai-gateway`) e, no dia seguinte, o relatório da rotina em `#prisma-operacao` e os e-mails de prazo. Se algo falhar, reativar as legadas e investigar.
 4. Depois de mais alguns dias sem erro: *Settings → JWT Signing Keys → Previously used*, revogar a chave HS256. **Irreversível**: invalida qualquer token assinado por ela, inclusive as chaves legadas.
 5. Opcional: remover das funções o retorno às chaves legadas.
+
+---
+
+## 7. Homologação
+
+Projeto Supabase `prisma-hml` (`acdqtnquxnrirqgnygsu`). O workflow *Deploy homologação* (`.github/workflows/deploy-homolog.yml`) roda a cada push na branch `homolog` (ou manualmente em Actions → *Run workflow*) e faz o mesmo que o job Supabase da produção: `link`, `db push --dry-run`, `db push` e `functions deploy`. Não publica site.
+
+**a) Environment `homolog` no GitHub** (Settings → Environments → *New environment*; em *Deployment branches*, permitir só `homolog`):
+
+| Secret | Valor |
+|---|---|
+| `SUPABASE_ACCESS_TOKEN` | Token da CLI (pode ser o mesmo da produção) |
+| `SUPABASE_DB_PASSWORD` | Senha do banco da `prisma-hml` |
+| `SUPABASE_PROJECT_REF` | `acdqtnquxnrirqgnygsu` |
+
+**b) Segredos das Edge Functions na hml**, com valores próprios, nunca os da produção:
+```bash
+npx supabase secrets set --project-ref acdqtnquxnrirqgnygsu RESEND_API_KEY=<chave> EMAIL_FROM="Prisma HML <prisma@dominio-verificado>" HERMES_GATEWAY_SECRET=<valor> ROUTINE_SECRET=<valor>
+```
+
+**c) URL das funções:** crie o segredo `prisma_functions_url` como no item 1.3, com `<ref>` = `acdqtnquxnrirqgnygsu`.
+
+**d) Auth da hml:** Authentication → Sign In / Providers → *Allow new users to sign up* **desligado**; URL Configuration → *Site URL* `http://localhost:3000` e *Redirect URLs* `http://localhost:3000/**`.
+
+**e) Front local apontando para a hml:** em `.env.local` (fora do Git):
+```
+NEXT_PUBLIC_SUPABASE_URL=https://acdqtnquxnrirqgnygsu.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=<chave publishable da prisma-hml>
+```
+Depois, `npm run dev`.
+
+**f) Dados de teste:** pelo `execute_sql` do Supabase MCP, só DML (insert, update, delete). Nada de DDL (create, alter, drop, grant, policy): o schema só muda por migração.
+
+**Fluxo:** branch de trabalho → merge em `homolog` (deploy automático na hml) → teste → PR da branch de trabalho para `main` (deploy em produção).
 
 ---
 

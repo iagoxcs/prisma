@@ -1,6 +1,6 @@
 // Alertas de prazo por e-mail (Resend). Chamada só pelo pg_cron (job prisma-deadline-emails),
 // autenticada pelo cabeçalho x-cron-secret (verify_jwt = false em config.toml).
-// Um resumo por pessoa com as notificações due_soon/overdue ainda não enviadas.
+// Um resumo por pessoa com as notificações due_soon/overdue/missing_due_date ainda não enviadas.
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
 // Chaves de API (migração, passo 2): usa a chave nova "default" quando existe; senão, a legada.
@@ -57,7 +57,7 @@ Deno.serve(async (req) => {
   const { data: pending, error } = await admin
     .from("notifications")
     .select("id, user_id, type, entity_id, project_id, message, profiles!inner(active)")
-    .in("type", ["due_soon", "overdue"])
+    .in("type", ["due_soon", "overdue", "missing_due_date"])
     .is("emailed_at", null)
     .gte("created_at", since)
     .eq("profiles.active", true)
@@ -105,41 +105,63 @@ Deno.serve(async (req) => {
 });
 
 function buildEmail(items: Pending[], projectName: Map<string, string>) {
-  const overdue = items.filter((n) => n.type === "overdue").length;
+  // Prazo (due_soon/overdue) e higiene do projeto (missing_due_date) saem em blocos separados.
+  const deadline = items.filter((n) => n.type !== "missing_due_date");
+  const missing = items.filter((n) => n.type === "missing_due_date");
+
+  const overdue = deadline.filter((n) => n.type === "overdue").length;
   const subject =
     overdue > 0
       ? `Prisma: ${overdue === 1 ? "1 tarefa com prazo vencido" : `${overdue} tarefas com prazo vencido`}`
-      : `Prisma: ${items.length === 1 ? "1 tarefa com prazo próximo" : `${items.length} tarefas com prazo próximo`}`;
+      : deadline.length > 0
+        ? `Prisma: ${deadline.length === 1 ? "1 tarefa com prazo próximo" : `${deadline.length} tarefas com prazo próximo`}`
+        : "Prisma: tarefas sem prazo nos seus projetos";
 
-  const link = (n: Pending) => (n.project_id ? `${SITE_URL}/projeto/?id=${n.project_id}&task=${n.entity_id}` : `${SITE_URL}/notificacoes/`);
-  const project = (n: Pending) => (n.project_id ? projectName.get(n.project_id) ?? "" : "");
+  const link = (n: Pending) =>
+    !n.project_id
+      ? `${SITE_URL}/notificacoes/`
+      : n.type === "missing_due_date"
+        ? `${SITE_URL}/projeto/?id=${n.project_id}&tab=lista`
+        : `${SITE_URL}/projeto/?id=${n.project_id}&task=${n.entity_id}`;
+  // A mensagem de missing_due_date já traz o nome do projeto.
+  const project = (n: Pending) =>
+    n.project_id && n.type !== "missing_due_date" ? projectName.get(n.project_id) ?? "" : "";
 
   // E-mail não lê os tokens de app/globals.css: cores inline, neutras (atraso em âmbar + texto).
-  const rows = items
-    .map(
-      (n) => `<tr><td style="padding:10px 0;border-bottom:1px solid #e4e4e7">
+  const row = (n: Pending) => `<tr><td style="padding:10px 0;border-bottom:1px solid #e4e4e7">
   <a href="${link(n)}" style="color:#18181b;text-decoration:none;font-weight:600">${esc(n.message)}</a>
   ${project(n) ? `<div style="color:#71717a;font-size:13px;margin-top:2px">${esc(project(n))}</div>` : ""}
   ${n.type === "overdue" ? `<div style="color:#b45309;font-size:13px;margin-top:2px">Vencida</div>` : ""}
-</td></tr>`,
-    )
-    .join("");
+</td></tr>`;
+  const table = (list: Pending[]) =>
+    `<tr><td><table role="presentation" width="100%" cellpadding="0" cellspacing="0">${list.map(row).join("")}</table></td></tr>`;
+
+  const blocks = [
+    deadline.length
+      ? `<tr><td style="font-size:15px;color:#3f3f46;padding-bottom:12px">Estas tarefas sob sua responsabilidade pedem atenção:</td></tr>${table(deadline)}`
+      : "",
+    missing.length
+      ? `<tr><td style="font-size:16px;font-weight:600;color:#18181b;padding:${deadline.length ? "20px" : "0"} 0 4px">Tarefas sem prazo</td></tr>
+<tr><td style="font-size:15px;color:#3f3f46;padding-bottom:12px">Projetos que você gerencia têm tarefas abertas sem prazo definido:</td></tr>${table(missing)}`
+      : "",
+  ].join("");
 
   const html = `<!doctype html><html lang="pt-BR"><body style="margin:0;background:#f4f4f5;font-family:'Red Hat Display',Arial,sans-serif">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:24px 12px">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:12px;padding:24px">
 <tr><td style="font-size:18px;font-weight:700;color:#18181b;padding-bottom:4px">Prisma</td></tr>
-<tr><td style="font-size:15px;color:#3f3f46;padding-bottom:12px">Estas tarefas sob sua responsabilidade pedem atenção:</td></tr>
-<tr><td><table role="presentation" width="100%" cellpadding="0" cellspacing="0">${rows}</table></td></tr>
+${blocks}
 <tr><td style="padding-top:20px"><a href="${SITE_URL}/notificacoes/" style="display:inline-block;background:#18181b;color:#ffffff;text-decoration:none;padding:10px 16px;border-radius:8px;font-size:14px">Abrir notificações</a></td></tr>
 <tr><td style="font-size:12px;color:#a1a1aa;padding-top:20px">Aviso automático do Prisma · Ambiente Consultoria. Os alertas por e-mail são ligados e desligados em Configurações → Parâmetros.</td></tr>
 </table></td></tr></table></body></html>`;
 
+  const line = (n: Pending) =>
+    `- ${n.message}${project(n) ? ` (${project(n)})` : ""}${n.type === "overdue" ? " [vencida]" : ""}\n  ${link(n)}`;
   const text = [
-    "Prisma: tarefas sob sua responsabilidade que pedem atenção",
-    "",
-    ...items.map((n) => `- ${n.message}${project(n) ? ` (${project(n)})` : ""}${n.type === "overdue" ? " [vencida]" : ""}\n  ${link(n)}`),
-    "",
+    ...(deadline.length ? ["Prisma: tarefas sob sua responsabilidade que pedem atenção", "", ...deadline.map(line), ""] : []),
+    ...(missing.length
+      ? ["Tarefas sem prazo", "Projetos que você gerencia têm tarefas abertas sem prazo definido:", "", ...missing.map(line), ""]
+      : []),
     `Notificações: ${SITE_URL}/notificacoes/`,
   ].join("\n");
 

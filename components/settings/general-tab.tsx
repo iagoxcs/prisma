@@ -29,6 +29,7 @@ function GeneralForm({ settings, lastUpdate, onSaved }: { settings: AppSettings;
   const [soon, setSoon] = useState(settings.notify_due_soon);
   const [overdue, setOverdue] = useState(settings.notify_overdue);
   const [byEmail, setByEmail] = useState(settings.email_deadline_alerts);
+  const [missingDue, setMissingDue] = useState(settings.notify_missing_due_date);
   const [cats, setCats] = useState(settings.default_categories.join("\n"));
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -42,6 +43,7 @@ function GeneralForm({ settings, lastUpdate, onSaved }: { settings: AppSettings;
       notify_due_soon: soon,
       notify_overdue: overdue,
       email_deadline_alerts: byEmail,
+      notify_missing_due_date: missingDue,
       default_categories: [...new Set(cats.split("\n").map((c) => c.trim()).filter(Boolean))],
     };
     const supabase = getSupabase();
@@ -99,6 +101,12 @@ function GeneralForm({ settings, lastUpdate, onSaved }: { settings: AppSettings;
             <input type="checkbox" className="size-4 accent-primary" checked={byEmail} disabled={!soon && !overdue} onChange={(e) => setByEmail(e.target.checked)} /> Também enviar os alertas por e-mail
           </label>
           <p className="text-[0.8125rem] text-muted-foreground">Um resumo por pessoa às <span className="num">08:05</span>, além do aviso no sino.</p>
+        </div>
+        <div className="space-y-1">
+          <label className="flex min-h-11 items-center gap-2 text-sm">
+            <input type="checkbox" className="size-4 accent-primary" checked={missingDue} onChange={(e) => setMissingDue(e.target.checked)} /> Lembrar a cada 15 dias as tarefas sem prazo (dias 1 e 15)
+          </label>
+          <p className="text-[0.8125rem] text-muted-foreground">O gerente de cada projeto recebe a contagem de tarefas abertas sem prazo.</p>
         </div>
       </section>
 
