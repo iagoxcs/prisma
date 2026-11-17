@@ -121,7 +121,7 @@ export interface Project {
 
 export interface AppNotification {
   id: string;
-  type: "task_assigned" | "due_soon" | "overdue" | "comment" | "mention";
+  type: "task_assigned" | "due_soon" | "overdue" | "comment" | "mention" | "missing_due_date";
   entity_id: string;
   project_id: string | null;
   message: string;
@@ -129,8 +129,13 @@ export interface AppNotification {
   created_at: string;
 }
 
-export const notificationHref = (n: Pick<AppNotification, "project_id" | "entity_id">) =>
-  n.project_id ? `/projeto/?id=${n.project_id}&task=${n.entity_id}` : "/";
+// missing_due_date aponta para o projeto (lista de tarefas); os demais tipos, para a tarefa.
+export const notificationHref = (n: Pick<AppNotification, "type" | "project_id" | "entity_id">) =>
+  !n.project_id
+    ? "/"
+    : n.type === "missing_due_date"
+      ? `/projeto/?id=${n.project_id}&tab=lista`
+      : `/projeto/?id=${n.project_id}&task=${n.entity_id}`;
 
 // Data de hoje (YYYY-MM-DD) no fuso de Brasília.
 export const todayISO = () => new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" });

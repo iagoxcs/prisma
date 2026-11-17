@@ -1307,6 +1307,7 @@ export type Database = {
         Returns: Database["public"]["Enums"]["user_role"]
       }
       generate_deadline_notifications: { Args: never; Returns: number }
+      generate_missing_due_date_notifications: { Args: never; Returns: number }
       has_role: {
         Args: { r: Database["public"]["Enums"]["user_role"] }
         Returns: boolean

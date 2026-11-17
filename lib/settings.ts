@@ -10,6 +10,7 @@ export interface AppSettings {
   notify_due_soon: boolean;
   notify_overdue: boolean;
   email_deadline_alerts: boolean;
+  notify_missing_due_date: boolean;
   default_categories: string[];
 }
 
@@ -18,6 +19,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   notify_due_soon: true,
   notify_overdue: true,
   email_deadline_alerts: true,
+  notify_missing_due_date: true,
   default_categories: [],
 };
 
