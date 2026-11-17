@@ -8,7 +8,9 @@
     "start": "npx serve out",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "db:types": "supabase gen types typescript --linked > types/database.ts"
+    "test": "vitest run",
+    "db:types": "supabase gen types typescript --linked > types/database.ts",
+    "db:verify": "node -e \"const fs=require('fs'),{execFileSync}=require('child_process');for(const f of fs.readdirSync('supabase/verify').filter(n=>n.endsWith('.sql')).sort()){console.log('== '+f);execFileSync('psql',['postgresql://postgres:postgres@127.0.0.1:54322/postgres','-v','ON_ERROR_STOP=1','-f','supabase/verify/'+f],{stdio:'inherit'})}\""
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
@@ -48,6 +50,7 @@
     "eslint-config-next": "16.4.3",
     "supabase": "^2.120.0",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "4.1.12"
   }
 }

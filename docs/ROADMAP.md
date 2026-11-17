@@ -23,7 +23,7 @@ Legenda: ✅ feito · 🟡 parcial · ⬜ pendente
 - ✅ Tarefas: título, descrição, responsável (equipe ou externo), prazo, início, escopo
 - ✅ Checklist, comentários (com opção "interno"), anexos até 20 MB (download via URL assinada)
 - ✅ Kanban A Fazer / Fazendo / Feito com arrastar e soltar, filtros e Realtime
-- 🟡 Reordenação dentro da coluna (hoje o cartão movido vai para o fim)
+- ✅ Reordenação dentro da coluna
 - 🟡 Compartilhar tarefa com externo (tabela `task_shares` pronta; falta interface)
 
 ## Fase 3 — Cronograma e notificações (RF-12, 17–19) ✅
@@ -61,4 +61,4 @@ Legenda: ✅ feito · 🟡 parcial · ⬜ pendente
 Views `security_invoker`, painéis Recharts, filtros, exportação HTML. Depende da validação nº 6.
 
 ## Validações em aberto
-Ver seção 12 de `REQUISITOS.md`. Resolvidas: **#7** (login por usuário/senha próprio). Próximas: #8 (como externos são cadastrados — hoje, um admin cria a conta), #11 (dependências no Gantt).
+Ver seção 12 de `REQUISITOS.md`. Resolvidas: **#1** (ação = tarefa), **#7** (login por usuário/senha próprio), **#8** (acesso de externos), **#10** (relatórios na identidade do Prisma). Próximas: #6 (indicadores da v1), #9 (varredura de anexos), #11 (dependências no Gantt), #12 (volume de usuários).

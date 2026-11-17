@@ -73,7 +73,7 @@ Princípios:
 - **Segurança no banco:** toda regra de acesso vive em RLS, não no front-end.
 - **Mutações da IA com a identidade do usuário:** o gateway repassa o JWT de quem acionou, então a IA nunca enxerga ou altera mais do que o próprio usuário.
 - **Migrações versionadas:** nenhuma alteração de schema direto no painel do Supabase.
-- **Um único projeto Supabase (produção):** testes rodam na stack local (`supabase start`), nunca no projeto remoto.
+- **Dois projetos Supabase: produção e homologação;** testes também na stack local (`supabase start`).
 
 ---
 
@@ -189,7 +189,7 @@ Observações:
 | `gerente` | Os que gerencia ou participa | Total nos seus projetos | Seus projetos | Não | Sim |
 | `lider` | Os que participa | Criar e editar nos seus projetos | Seus projetos | Não | Sim |
 | `consultor` | Os que participa | Editar as atribuídas a si; criar | Seus projetos | Não | Sim |
-| `externo` | Apenas os convidados | Apenas as atribuídas ou compartilhadas | Não | Não | A validar |
+| `externo` | Apenas os convidados | Atribuídas: altera status e marca checklist; compartilhadas: só leitura; sem criar nem excluir | Não | Não | A validar |
 
 Implementação em RLS:
 
@@ -297,15 +297,15 @@ Fluxo com Claude Code:
 
 | # | Pergunta | Impacto |
 |---|---|---|
-| 1 | O que é uma "ação" nos relatórios (RF-03)? É uma tarefa, um grupo de tarefas ou uma entidade própria? | Modelo de dados e geração de relatórios |
+| 1 | ✅ **Resolvida:** ação = tarefa; relatórios por projeto e por tarefa (`reports.task_id`). | Modelo de dados e geração de relatórios |
 | 2 | ✅ **Resolvida:** a IA respeita as permissões de cada usuário (modelo da seção 8). | Segurança e arquitetura do gateway |
 | 3 | ✅ **Resolvida:** terceiros (`externo`) não acionam a IA. | Matriz de permissões |
 | 4 | ✅ **Resolvida:** base de conhecimento no Supabase, sob RLS (seção 8.2). | Pgvector vs. repositório externo |
 | 5 | ✅ **Resolvida:** Hermes hospedado em VPS, operada por Iago Oliveira. | Autenticação e contrato do gateway |
 | 6 | Quais indicadores da seção 9.2 entram na v1 e há outros necessários? Há metas por indicador? | Views e painéis |
 | 7 | ✅ **Resolvida:** e-mail/senha + Discord (vinculação automática por e-mail verificado ou manual em `/conta/`). | Configuração do Auth |
-| 8 | Como terceiros são convidados e quem os aprova? | Fluxo de onboarding externo |
+| 8 | ✅ **Resolvida:** só o admin cria a conta do externo; o gerente do projeto inclui externo já cadastrado; o externo altera só o status das tarefas atribuídas a ele e marca itens existentes do checklist; não cria nem exclui tarefas ou itens. | Fluxo de onboarding externo |
 | 9 | Anexos de qualquer formato exigem varredura de malware? | Pipeline de upload |
-| 10 | Os relatórios HTML precisam seguir um padrão visual já existente da Ambiente? | Templates de relatório |
+| 10 | ✅ **Resolvida:** relatórios seguem a identidade visual do Prisma (tokens do tema Lâminas, superfícies sólidas). | Templates de relatório |
 | 11 | Gantt precisa de dependências entre tarefas ou apenas barras por período? | Modelo (`task_dependencies`) e Fase 3 |
 | 12 | Quantos usuários internos e externos são esperados? | Dimensionamento do plano Supabase |
