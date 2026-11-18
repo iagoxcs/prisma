@@ -35,5 +35,11 @@ jobs:
       # Falha se o histórico remoto tiver versões que não existem em supabase/migrations/ (ver CLAUDE.md).
       - name: Aplicar migrações
         run: supabase db push --password "$SUPABASE_DB_PASSWORD"
-      - name: Publicar Edge Functions
-        run: supabase functions deploy --project-ref "$SUPABASE_PROJECT_REF" --use-api
+      # Sem IA na homologação: publica todas as funções, menos o ai-gateway.
+      - name: Publicar Edge Functions (sem ai-gateway)
+        run: |
+          funcs=$(find supabase/functions -mindepth 1 -maxdepth 1 -type d ! -name '_*' ! -name ai-gateway -printf '%f ')
+          echo "Publicando: $funcs"
+          supabase functions deploy $funcs --project-ref "$SUPABASE_PROJECT_REF" --use-api
+      - name: Remover ai-gateway da homologação
+        run: supabase functions delete ai-gateway --project-ref "$SUPABASE_PROJECT_REF" --yes || echo "ai-gateway já ausente"
