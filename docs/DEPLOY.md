@@ -168,7 +168,7 @@ Quem depende de chave de API: só as três Edge Functions. O `pg_cron` chama o `
 
 ## 7. Homologação
 
-Projeto Supabase `prisma-hml` (`acdqtnquxnrirqgnygsu`). O workflow *Deploy homologação* (`.github/workflows/deploy-homolog.yml`) roda a cada push na branch `homolog` (ou manualmente em Actions → *Run workflow*) e faz o mesmo que o job Supabase da produção: `link`, `db push --dry-run`, `db push` e `functions deploy`. Não publica site.
+Projeto Supabase `prisma-hml` (`acdqtnquxnrirqgnygsu`). O workflow *Deploy homologação* (`.github/workflows/deploy-homolog.yml`) roda a cada push na branch `homolog` (ou manualmente em Actions → *Run workflow*) e faz o mesmo que o job Supabase da produção: `link`, `db push --dry-run`, `db push` e `functions deploy`. Não publica site. **Sem IA na hml:** o `ai-gateway` não é publicado e, se existir, é removido a cada deploy; o Hermes e a rotina seguem apontando só para a produção.
 
 **a) Environment `homolog` no GitHub** (Settings → Environments → *New environment*; em *Deployment branches*, permitir só `homolog`):
 
@@ -180,7 +180,7 @@ Projeto Supabase `prisma-hml` (`acdqtnquxnrirqgnygsu`). O workflow *Deploy homol
 
 **b) Segredos das Edge Functions na hml**, com valores próprios, nunca os da produção:
 ```bash
-npx supabase secrets set --project-ref acdqtnquxnrirqgnygsu RESEND_API_KEY=<chave> EMAIL_FROM="Prisma HML <prisma@dominio-verificado>" HERMES_GATEWAY_SECRET=<valor> ROUTINE_SECRET=<valor>
+npx supabase secrets set --project-ref acdqtnquxnrirqgnygsu RESEND_API_KEY=<chave> EMAIL_FROM="Prisma HML <prisma@dominio-verificado>"
 ```
 
 **c) URL das funções:** crie o segredo `prisma_functions_url` como no item 1.3, com `<ref>` = `acdqtnquxnrirqgnygsu`.
