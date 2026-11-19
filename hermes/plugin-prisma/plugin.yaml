@@ -1,15 +1,17 @@
 name: prisma
-version: 0.4.1
-description: "Ferramentas do Prisma via ai-gateway: leitura, escrita com prévia confirmada por ✅ ou 'sim' na DM (conferida no Discord pelo plugin), leitura e geração de arquivos (TXT, MD, CSV, PDF, DOCX, XLSX, HTML, BPMN) e transcrição de mensagens de voz (provedor prisma_stt). Só em DM do Discord; o autor vem do contexto da sessão, nunca do LLM."
+version: 0.5.0
+description: "Ferramentas do Prisma via ai-gateway: leitura (inclusive membros do projeto), escrita com prévia confirmada por ✅ ou 'sim' na DM (conferida no Discord pelo plugin), tarefas de uma ata em lote (até 30 numa prévia), leitura e geração de arquivos (TXT, MD, CSV, PDF, DOCX, XLSX, HTML, BPMN) e transcrição de mensagens de voz (provedor prisma_stt). Só em DM do Discord; o autor vem do contexto da sessão, nunca do LLM."
 author: "Ambiente Consultoria"
 kind: standalone
 provides_tools:
   - prisma_listar_projetos
   - prisma_listar_tarefas
   - prisma_ver_tarefa
+  - prisma_listar_membros
   - prisma_buscar_contexto
   - prisma_buscar_conhecimento
   - prisma_criar_tarefa
+  - prisma_criar_tarefas_lote
   - prisma_atualizar_tarefa
   - prisma_comentar_tarefa
   - prisma_registrar_contexto
