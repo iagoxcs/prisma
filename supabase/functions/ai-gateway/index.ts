@@ -143,7 +143,10 @@ async function runTool(db: SupabaseClient, tool: Tool, args: Args): Promise<unkn
 // cancel descarta a proposta. Nenhuma exclusão.
 // ---------------------------------------------------------------------------------------------------------
 
-const ACTIONS = ["create_task", "update_task", "add_comment", "add_context_entry", "attach_file"] as const;
+const ACTIONS = ["create_task", "create_tasks", "update_task", "add_comment", "add_context_entry", "attach_file"] as const;
+// create_tasks (F3): lote de tarefas de uma ata ou transcrição, numa única prévia e num único ✅. Cada item
+// segue as regras de create_task; o insert é um só (atômico) e cada tarefa ganha a sua linha em ai_actions_log.
+const BATCH_MAX = 30;
 // attach_file: a proposta guarda só nome, tamanho e SHA-256; o conteúdo (base64) vem de novo no commit e
 // precisa bater com o hash. Limite menor que o do site (20 MB) por causa do tamanho da requisição.
 const ATTACH_MAX_BYTES = 10 * 1024 * 1024;
@@ -151,6 +154,8 @@ const ATTACH_BUCKET = "task-attachments";
 const SHA_RE = /^[0-9a-f]{64}$/;
 type Action = (typeof ACTIONS)[number];
 type Params = Record<string, string | null>;
+type BatchParams = { project_id: string; tasks: Params[] };
+type AnyParams = Params | BatchParams;
 
 const TASK_STATUS = ["todo", "doing", "done"] as const;
 const TASK_STATUS_LABEL: Record<string, string> = { todo: "A Fazer", doing: "Fazendo", done: "Feito" };
@@ -196,9 +201,40 @@ function required(raw: Args, name: string, kind: "uuid" | "date" | "status" | "k
   return v;
 }
 
+// Lote: só project_id e tasks (1 a BATCH_MAX itens). Cada item é validado como create_task no mesmo projeto;
+// o erro aponta o número do item.
+function validateAction(action: string, raw: Args): AnyParams {
+  if (action !== "create_tasks") return validateOne(action, raw);
+  const extra = Object.keys(raw).filter((k) => k !== "project_id" && k !== "tasks");
+  if (extra.length) throw new GatewayError(400, "invalid_args", `Campos não permitidos: ${extra.join(", ")}.`);
+  const project_id = required(raw, "project_id", "uuid");
+  const list = raw.tasks;
+  if (!Array.isArray(list) || list.length === 0 || list.length > BATCH_MAX) {
+    throw new GatewayError(400, "invalid_args", `Informe de 1 a ${BATCH_MAX} tarefas.`);
+  }
+  const tasks = list.map((item, i) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      throw new GatewayError(400, "invalid_args", `Tarefa ${i + 1}: formato inválido.`);
+    }
+    if ("project_id" in item) {
+      throw new GatewayError(400, "invalid_args", `Tarefa ${i + 1}: o projeto vai só no lote (project_id).`);
+    }
+    try {
+      const p = validateOne("create_task", { ...(item as Args), project_id });
+      delete p.project_id;
+      return p;
+    } catch (e) {
+      if (e instanceof GatewayError) throw new GatewayError(e.status, e.code, `Tarefa ${i + 1}: ${e.message}`);
+      throw e;
+    }
+  });
+  return { project_id, tasks };
+}
+
 // Só os parâmetros conhecidos de cada ação passam; qualquer outro é recusado.
-function validateAction(action: string, raw: Args): Params {
-  const allowed: Record<Action, readonly string[]> = {
+function validateOne(action: string, raw: Args): Params {
+  if (action === "create_tasks") throw new GatewayError(400, "invalid_args", "Ação de escrita não permitida.");
+  const allowed: Record<Exclude<Action, "create_tasks">, readonly string[]> = {
     create_task: ["project_id", "title", "description", "status", "assignee_id", "start_date", "due_date", "category_id"],
     update_task: ["task_id", ...UPDATE_FIELDS],
     add_comment: ["task_id", "body"],
@@ -208,7 +244,7 @@ function validateAction(action: string, raw: Args): Params {
   if (!(ACTIONS as readonly string[]).includes(action)) {
     throw new GatewayError(400, "invalid_args", "Ação de escrita não permitida.");
   }
-  const extra = Object.keys(raw).filter((k) => !allowed[action as Action].includes(k));
+  const extra = Object.keys(raw).filter((k) => !allowed[action as Exclude<Action, "create_tasks">].includes(k));
   if (extra.length) throw new GatewayError(400, "invalid_args", `Campos não permitidos: ${extra.join(", ")}.`);
 
   const p: Params = {};
@@ -305,7 +341,39 @@ async function categoryName(db: SupabaseClient, id: string, projectId: string): 
 // Prévia em pt-BR que o usuário valida na DM (reagindo ✅ ou respondendo "sim"). Mostra tudo o que será
 // gravado, uma linha por campo. Lida com a sessão do usuário: se ele não enxerga o projeto ou a tarefa, a
 // proposta já é recusada aqui.
-async function describe(db: SupabaseClient, action: Action, p: Params): Promise<{ summary: string; project_id: string }> {
+async function describe(db: SupabaseClient, action: Action, p: AnyParams): Promise<{ summary: string; project_id: string }> {
+  return action === "create_tasks" ? describeBatch(db, p as BatchParams) : describeOne(db, action, p as Params);
+}
+
+// Prévia do lote: uma linha curta por tarefa (o plugin cuida do limite de tamanho da mensagem no Discord).
+// Projeto, responsáveis e escopos são lidos com a sessão do usuário: sem acesso, o lote inteiro é recusado.
+async function describeBatch(db: SupabaseClient, b: BatchParams): Promise<{ summary: string; project_id: string }> {
+  const project = await projectName(db, b.project_id);
+  const people = new Map<string, string>();
+  const scopes = new Map<string, string>();
+  const rows: string[] = [];
+  for (const [i, t] of b.tasks.entries()) {
+    const parts = [`${i + 1}. ${quote(t.title!, 60)}`];
+    if (t.assignee_id) {
+      if (!people.has(t.assignee_id)) people.set(t.assignee_id, await personName(db, t.assignee_id));
+      parts.push(people.get(t.assignee_id)!);
+    }
+    if (t.category_id) {
+      if (!scopes.has(t.category_id)) scopes.set(t.category_id, await categoryName(db, t.category_id, b.project_id));
+      parts.push(`escopo ${scopes.get(t.category_id)}`);
+    }
+    if (t.due_date) parts.push(`prazo ${brDate(t.due_date)}`);
+    if (t.status && t.status !== "todo") parts.push(TASK_STATUS_LABEL[t.status]);
+    rows.push(parts.join(" · "));
+  }
+  const n = b.tasks.length;
+  return {
+    project_id: b.project_id,
+    summary: [`Criar ${n} ${n === 1 ? "tarefa" : "tarefas"} no projeto ${project}`, ...rows].join("\n"),
+  };
+}
+
+async function describeOne(db: SupabaseClient, action: Action, p: Params): Promise<{ summary: string; project_id: string }> {
   const fields = async (projectId: string): Promise<string[]> => {
     const out: string[] = [];
     if (p.title !== undefined && action === "update_task") out.push(`• Título: ${quote(p.title!, 300)}`);
@@ -364,6 +432,8 @@ async function describe(db: SupabaseClient, action: Action, p: Params): Promise<
         ]),
       };
     }
+    case "create_tasks":
+      throw new GatewayError(400, "invalid_args", "Ação de escrita não permitida.");
   }
 }
 
@@ -415,6 +485,24 @@ function writeError(error: { code?: string; message?: string }): GatewayError | 
   if (error.code === "23514") return new GatewayError(400, "invalid_data", "Os dados não passaram nas regras do Prisma (ex.: prazo antes do início).");
   if (error.code === "23503") return new GatewayError(400, "invalid_data", "Algum item referenciado não existe mais.");
   return null;
+}
+
+// Lote: um único insert (atômico). Se a RLS ou uma constraint recusar uma linha, nenhuma tarefa é criada.
+// defaultToNull: false faz o campo ausente num item usar o default da coluna (ex.: status = todo).
+async function executeBatch(db: SupabaseClient, userId: string, b: BatchParams): Promise<string[]> {
+  const fail = (error: { code?: string; message?: string }) => {
+    throw writeError(error) ?? error;
+  };
+  const { data: last, error: posErr } = await db
+    .from("tasks").select("position").eq("project_id", b.project_id)
+    .order("position", { ascending: false }).limit(1).maybeSingle();
+  if (posErr) fail(posErr);
+  const base = last?.position ?? 0;
+  const rows = b.tasks.map((t, i) => ({ ...t, project_id: b.project_id, position: base + i + 1, created_by: userId }));
+  const { data, error } = await db.from("tasks").insert(rows, { defaultToNull: false }).select("id");
+  if (error) fail(error);
+  if (data?.length !== rows.length) throw new GatewayError(403, "forbidden", "Você não tem permissão para criar estas tarefas.");
+  return data.map((r) => r.id as string);
 }
 
 async function execute(db: SupabaseClient, userId: string, action: Action, p: Params, file?: Uint8Array): Promise<string> {
@@ -486,6 +574,8 @@ async function execute(db: SupabaseClient, userId: string, action: Action, p: Pa
       }
       return data!.id;
     }
+    case "create_tasks":
+      throw new GatewayError(400, "invalid_args", "Ação de escrita não permitida.");
   }
 }
 
@@ -496,6 +586,16 @@ function loggable(input: Args): Args {
   if (params && typeof params.body === "string") {
     params.body_chars = params.body.length;
     delete params.body;
+  }
+  // Lote: só a quantidade e os títulos; descrições ficam fora do log.
+  if (params && Array.isArray(params.tasks)) {
+    const list = params.tasks as unknown[];
+    params.tasks_count = list.length;
+    params.task_titles = list.slice(0, BATCH_MAX).map((t) => {
+      const title = t && typeof t === "object" ? (t as Args).title : null;
+      return typeof title === "string" ? title.slice(0, 120) : null;
+    });
+    delete params.tasks;
   }
   if (params) out.params = params;
   delete out.confirm_code;
@@ -831,7 +931,7 @@ Deno.serve(async (req) => {
     // Ação de outro usuário responde como inexistente: não revela que o id existe.
     if (!pa || pa.user_id !== userId) throw new GatewayError(404, "not_found", "Ação pendente não encontrada.");
     auditTool = `commit:${pa.tool}`.slice(0, 64);
-    const input = pa.input as { action: Action; params: Params; summary: string; project_id: string };
+    const input = pa.input as { action: Action; params: AnyParams; summary: string; project_id: string };
     projectArg = input.project_id ?? null;
     if (pa.status !== "proposed") {
       throw new GatewayError(409, "not_pending", "Esta ação já foi confirmada, cancelada ou expirou. Peça uma nova.");
@@ -865,8 +965,27 @@ Deno.serve(async (req) => {
     if (!claimed?.length) throw new GatewayError(409, "not_pending", "Esta ação já foi confirmada, cancelada ou expirou.");
 
     try {
-      const file = input.action === "attach_file" ? await attachmentBytes(args, input.params) : undefined;
-      const entityId = await execute(await openSession(), userId!, input.action, input.params, file);
+      if (input.action === "create_tasks") {
+        const ids = await executeBatch(await openSession(), userId!, input.params as BatchParams);
+        // Uma linha de log por tarefa criada. Elas contam no limite por minuto (RATE_LIMIT_PER_MIN): depois de
+        // um lote grande, o usuário espera cerca de um minuto para a próxima chamada.
+        const { error: logErr } = await service.from("ai_actions_log").insert(ids.map((id, index) => ({
+          source: "discord",
+          status: "executed",
+          tool: auditTool,
+          user_id: userId,
+          input: { args: loggable(args) },
+          result: { pending_id: pendingId, entity_id: id, index },
+          request_id: requestId,
+          project_id: projectArg,
+          external_ref: null,
+        })));
+        if (logErr) console.error(`ai_actions_log: falha ao gravar o lote (${logErr.code ?? "sem código"})`);
+        return json({ ok: true, tool, data: { pending_id: pendingId, action: input.action, ids, summary: input.summary } });
+      }
+      const params = input.params as Params;
+      const file = input.action === "attach_file" ? await attachmentBytes(args, params) : undefined;
+      const entityId = await execute(await openSession(), userId!, input.action, params, file);
       await audit("executed", { pending_id: pendingId, entity_id: entityId });
       return json({ ok: true, tool, data: { pending_id: pendingId, action: input.action, id: entityId, summary: input.summary } });
     } catch (e) {
