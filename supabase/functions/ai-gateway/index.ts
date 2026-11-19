@@ -12,7 +12,8 @@ const PROPOSE_LIMIT_PER_MIN = 10; // DV7: escrita
 const CONFIRM_TTL_MS = 10 * 60_000; // DV7: confirmação válida por 10 min
 const MAX_ATTEMPTS = 3; // DV7
 const EXCERPT = 2000;
-const TOOLS = ["list_projects", "list_tasks", "get_task", "search_context", "search_knowledge"] as const;
+// list_members (F3): id, nome e papel de quem está no projeto, para o LLM trocar o nome da ata por assignee_id.
+const TOOLS = ["list_projects", "list_tasks", "get_task", "list_members", "search_context", "search_knowledge"] as const;
 // whoami (Etapa 6): só confirma que o autor está vinculado a um perfil ativo e interno, sem abrir sessão.
 // O plugin consulta antes de enviar um áudio ao provedor de transcrição.
 const WRITE_TOOLS = ["propose", "commit", "cancel", "whoami"] as const;
@@ -106,6 +107,27 @@ async function runTool(db: SupabaseClient, tool: Tool, args: Args): Promise<unkn
         .maybeSingle();
       if (error) throw error;
       return data;
+    }
+    case "list_members": {
+      // Tudo com a sessão do usuário: quem não vê o projeto recebe 404, sem saber se ele existe.
+      const projectId = uuidArg(args, "project_id", true)!;
+      const { data: project, error: projErr } = await db
+        .from("projects").select("manager_id").eq("id", projectId).maybeSingle();
+      if (projErr) throw projErr;
+      if (!project) throw notFound();
+      const { data: members, error: memErr } = await db
+        .from("project_members").select("user_id, project_role").eq("project_id", projectId);
+      if (memErr) throw memErr;
+      const roles = new Map<string, string>((members ?? []).map((m) => [m.user_id as string, m.project_role as string]));
+      if (project.manager_id) roles.set(project.manager_id as string, "gerente");
+      if (!roles.size) return [];
+      const { data: people, error: pplErr } = await db
+        .from("profiles").select("id, name, active").in("id", [...roles.keys()]);
+      if (pplErr) throw pplErr;
+      return (people ?? [])
+        .filter((p) => p.active)
+        .map((p) => ({ id: p.id as string, name: p.name as string, project_role: roles.get(p.id as string)! }))
+        .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
     }
     case "search_context": {
       const query = queryArg(args);
