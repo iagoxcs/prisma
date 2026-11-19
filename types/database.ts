@@ -103,6 +103,9 @@ export type Database = {
           code_hash: string
           committed_at: string | null
           created_at: string
+          discord_channel_id: string | null
+          discord_message_id: string | null
+          discord_user_id: string | null
           expires_at: string
           id: string
           input: Json
@@ -115,6 +118,9 @@ export type Database = {
           code_hash: string
           committed_at?: string | null
           created_at?: string
+          discord_channel_id?: string | null
+          discord_message_id?: string | null
+          discord_user_id?: string | null
           expires_at: string
           id?: string
           input: Json
@@ -127,6 +133,9 @@ export type Database = {
           code_hash?: string
           committed_at?: string | null
           created_at?: string
+          discord_channel_id?: string | null
+          discord_message_id?: string | null
+          discord_user_id?: string | null
           expires_at?: string
           id?: string
           input?: Json
