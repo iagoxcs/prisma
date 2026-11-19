@@ -1,0 +1,61 @@
+# Prisma — Roadmap de melhorias
+
+Backlog validado por Iago em 17/11/2026. Este arquivo é a fonte da verdade do andamento: o Claude Code o atualiza a cada PR (protocolo na seção 5).
+
+Legenda: ✅ feito · 🟡 parcial · ⬜ pendente · ⛔ aguarda decisão (seção 4)
+
+## 1. Backlog aprovado
+
+| Ordem | Onda | ID | Item | Escopo e aceite mínimo | Depende de | Status | PRs |
+|---|---|---|---|---|---|---|---|
+| 1 | 1 | D1 | Registrar decisões de 14/11/2026 | Validações #1, #8 e #10 em REQUISITOS §12; matriz do externo em §7 | — | ✅ | #55 |
+| 2 | 1 | E1 | Testes de banco e front no CI | Job db roda supabase/verify; Vitest em lib/; npm test no CI e no deploy | — | ✅ | #55 |
+| 3 | 1 | E2 | Ambiente de homologação | Projeto prisma-hml; deploy-homolog.yml; URL das funções no Vault por ambiente; hml sem ai-gateway | — | ✅ | #55, #56 |
+| 4 | 1 | A6 | Bloquear troca de projeto da tarefa | Trigger before update of project_id em tasks: sem public.is_admin() → erro 42501 "Não é possível mover a tarefa para outro projeto."; vale também para service_role; verify: consultor responsável recebe 42501, admin consegue, troca de status pelo responsável continua | — | 🟡 (fatia 1: trigger + verify; na homolog; falta db:verify no CI) | #57 |
+| 5 | 1 | E3 | Concluir migração de chaves (DV8) | Passo 2 feito. Passo 3: só após 7 dias sem log de fallback para chave legada nas Edge Functions; remover o fallback de admin-users, deadline-emails e ai-gateway; DEPLOY.md com a revogação (desativar legadas e revogar a HS256 no painel, feito por Iago) | — | 🟡 | #51, #52 |
+| 6 | 2 | F3 | Ata ou transcrição viram tarefas em lote | Escrita em lote no ai-gateway: até 30 tarefas numa única prévia, confirmada uma vez com ✅; cada tarefa validada como create_task; uma linha em ai_actions_log por tarefa; plugin do Hermes extrai "Saídas e Responsáveis" da ata e propõe o lote | — | ⬜ | |
+| 7 | 2 | I1 | Vincular canal do Discord sem digitar o ID | Ver decisão pendente DP1 | DP1 | ⛔ | |
+| 8 | 2 | O3 | Prévias da IA resistentes a reinício | Guardar canal e message_id da prévia em ai_pending_actions; ao iniciar, o plugin retoma a observação das prévias em status proposed ainda não expiradas | — | ⬜ | |
+| 9 | 2 | O5 | Telemetria de custo da IA | Ver decisão pendente DP2; total mensal publicado no #prisma-operacao | DP2 | ⛔ | |
+| 10 | 2 | O1 | Teste repetível das aprovações de escrita da IA | Script contra a stack local (supabase start + supabase functions serve ai-gateway), porque a hml não tem ai-gateway: código errado 2×, cancelamento na 3ª tentativa, reuso, prévia expirada, usuário diferente → recusados; prévia válida → executada | — | ⬜ | |
+| 11 | 2 | E5 | Deploy do Hermes reproduzível | hermes/deploy/: config.yaml de referência sem segredos + install.sh idempotente (plugin, rotina, timer do systemd) para a VPS atual; hermes/README.md atualizado | — | ⬜ | |
+| 12 | 3 | F2 | One Page e status report | Fatias: (a) reports.task_id; (b) Edge Function de geração em HTML na identidade do Prisma (tokens do tema Lâminas, superfícies sólidas, sem backdrop-filter); (c) aba Relatórios no projeto e na tarefa, com versões e iframe sandbox; (d) generate_report no ai-gateway. Sem bloco de saúde do projeto | — | ⬜ | |
+| 13 | 3 | F5 | Criar projeto a partir de modelo | Na criação do projeto, escolher um modelo (knowledge_items de metodologia com template_csv); RPC atômica cria escopos e tarefas com datas relativas ao início | — | ⬜ | |
+| 14 | 3 | F7 | Acesso de clientes (externos) | (a) convite por e-mail feito só pelo admin, com papel externo; (b) interface de task_shares; (c) externo altera só o status das tarefas atribuídas a ele e marca itens existentes do checklist; compartilhadas só leitura; não cria nem exclui tarefas ou itens; (d) gerente do projeto inclui externo já cadastrado | A6 | ⬜ | |
+| 15 | 3 | F8 | Menções (@) em comentários | Seletor de membros do projeto ao digitar @; notificação mention ao mencionado; só membros que veem a tarefa | — | ⬜ | |
+| 16 | 3 | I3 | Edição direta na Lista | Status, responsável e prazo editáveis na linha da aba Lista, respeitando RLS e Realtime | — | ⬜ | |
+| 17 | 3 | O4 | Lembrete de tarefas sem prazo | Notificação + e-mail nos dias 1 e 15, às 08:00, ao gerente do projeto | — | ✅ | #55 |
+| 18 | 4 | O2 | Busca híbrida (texto + pgvector) | Trechos com embedding para project_context_entries e knowledge_items; search_context e search_knowledge com busca híbrida sob RLS | Volume de contexto | ⬜ | |
+| 19 | 4 | O6 | Arrastar barras do Gantt | Mover e redimensionar barras altera start_date e due_date, respeitando RLS | — | ⬜ | |
+| 20 | 4 | I6 | Estados vazios que orientam | Contexto vazio → "Importar ata"; Conhecimento vazio → "Publicar metodologia" | — | ⬜ | |
+| 21 | 4 | E6 | Arquivar projetos concluídos | Arquivados fora das listas, do Realtime e da rotina diária, com filtro "Mostrar arquivados" | — | ⬜ | |
+
+## 2. Reprovados (não implementar)
+
+F1 Saúde do projeto · F4 Encerramento com lições aprendidas · F6 Briefing semanal da IA · I2 Paleta de comandos e atalhos · I4 Criação rápida em texto · I5 Atividade da IA no projeto · E4 Painel de operação da IA · qualquer mensuração de horas (apontamento, estimativa, capacidade)
+
+## 3. Decisões registradas
+
+| Data | Tema | Decisão |
+|---|---|---|
+| 14/11/2026 | Relatórios | Ação = tarefa; relatórios por projeto e por tarefa, na identidade visual do Prisma |
+| 14/11/2026 | Hermes | Continua na VPS atual |
+| 14/11/2026 | Horas | Fora do escopo |
+| 17/11/2026 | Externos | Só o admin cria a conta; gerente inclui externo já cadastrado; externo altera só o status das atribuídas e marca itens existentes do checklist; compartilhadas só leitura |
+| 17/11/2026 | O4 | Notificação + e-mail quinzenal ao gerente do projeto |
+| 17/11/2026 | Homologação | MCP com execute_sql só para dados de teste na hml, sem DDL; e-mail de prazo desligado na hml |
+
+## 4. Decisões pendentes
+
+| ID | Item | Pergunta | Opções |
+|---|---|---|---|
+| DP1 | I1 | Como vincular o canal ao projeto? | (a) botão "Criar canal do projeto" no Prisma, o bot cria o canal e grava discord_channel_id (exige permissão Manage Channels); (b) comando do bot executado dentro do canal, escolhendo o projeto (gerente ou admin) |
+| DP2 | O5 | De onde vem o custo da IA? | (a) relatório de uso do provedor de LLM, consultado pela rotina; (b) tokens e modelo por chamada enviados pelo plugin e gravados em ai_actions_log |
+
+## 5. Protocolo de execução
+
+1. **Próximo item:** o primeiro da coluna Ordem com status ⬜ ou 🟡, cujas dependências estão ✅ e sem decisão pendente. Item ⛔ só avança com a decisão registrada na seção 4 e movida para a seção 3.
+2. **Plano:** em plan mode, dividir o item em fatias de uma sessão cada, sem misturar schema, Edge Function e front na mesma fatia. Para cada fatia: arquivos exatos, aceite verificável e comando de validação. Aguardar aprovação.
+3. **Execução:** uma fatia por sessão, em uma branch `feat/<id>-<slug>`. Validação: npm run lint && npm run typecheck && npm test && npm run build; com migração, também supabase db reset && npm run db:verify. Fatia com migração ou Edge Function passa por push na branch homolog antes da PR para main.
+4. **Registro:** na mesma branch, atualizar a linha do item (🟡 com a fatia concluída entre parênteses, ✅ quando todas estiverem concluídas) e a coluna PRs.
+5. **Regras:** CLAUDE.md prevalece. Item reprovado não é implementado. Conflito com as premissas ou lacuna de requisito: parar e perguntar.
