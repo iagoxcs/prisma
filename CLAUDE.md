@@ -5,6 +5,7 @@
 Ferramenta interna, **single-tenant** (sem `tenant_id`). Especificação completa: `docs/REQUISITOS.md`.
 Decisões e arquitetura: `docs/ARQUITETURA.md`. Fases: `docs/ROADMAP.md`. Deploy: `docs/DEPLOY.md`.
 Identidade visual: `docs/IDENTIDADE-VISUAL.md`.
+Backlog de melhorias e protocolo de execução: `docs/ROADMAP-MELHORIAS.md`.
 
 ## Stack
 Next.js (App Router) + TypeScript + Tailwind + shadcn/ui · Supabase (Auth, Postgres+RLS, Storage, Realtime, Edge Functions, pg_cron) · publicação **estática** na KingHost (https://prisma.ambienteconsulta.com.br) via GitHub Actions.

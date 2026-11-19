@@ -62,3 +62,6 @@ Views `security_invoker`, painéis Recharts, filtros, exportação HTML. Depende
 
 ## Validações em aberto
 Ver seção 12 de `REQUISITOS.md`. Resolvidas: **#1** (ação = tarefa), **#7** (login por usuário/senha próprio), **#8** (acesso de externos), **#10** (relatórios na identidade do Prisma). Próximas: #6 (indicadores da v1), #9 (varredura de anexos), #11 (dependências no Gantt), #12 (volume de usuários).
+
+## Melhorias validadas (17/11/2026)
+Backlog, andamento e protocolo em `docs/ROADMAP-MELHORIAS.md`.
