@@ -9,6 +9,8 @@ Regras (docs/ARQUITETURA.md):
   neste plugin. O plugin posta na DM a prévia do que será gravado, com ✅ e ❌. Só grava (commit) depois de
   conferir, direto na API do Discord, que o próprio usuário reagiu ✅ ou respondeu "sim" depois da prévia.
   O LLM nunca vê o segredo e não consegue confirmar sozinho.
+- Prévias resistentes a reinício (O3): o gateway guarda onde cada prévia foi postada; ao iniciar, o processo
+  `gateway run` pede as prévias abertas (com um segredo novo) e volta a observá-las. Anexos ficam de fora.
 - Arquivos (files.py): lê TXT, MD, CSV, PDF, DOCX, XLSX, HTML e BPMN recebidos na DM e gera TXT, MD, HTML,
   DOCX, PDF, XLSX e BPMN, enviados na própria DM. Anexar um arquivo a uma tarefa passa pela prévia.
 """
@@ -95,16 +97,23 @@ def _request(tool: str, args: dict, *, as_user: str | None = None) -> dict:
             return {"ok": False, "code": "dm_only", "error": MSG_ONLY_DM}
     if not user_id.isdigit():
         return {"ok": False, "code": "no_author", "error": "Não foi possível identificar o autor."}
-    secret = _secret()
-    if not secret:
-        return {"ok": False, "code": "not_configured", "error": "Integração com o Prisma não configurada."}
-
-    payload = {
+    return _post({
         "discord_user_id": user_id,
         "tool": tool,
         "args": {k: v for k, v in args.items() if v not in (None, "")},
         "request_id": str(uuid.uuid4()),
-    }
+    })
+
+
+def _resume_request() -> dict:
+    """resume_previews (O3): chamada de serviço, sem usuário. Só a retomada usa; o LLM não tem acesso."""
+    return _post({"tool": "resume_previews", "args": {}, "request_id": str(uuid.uuid4())})
+
+
+def _post(payload: dict) -> dict:
+    secret = _secret()
+    if not secret:
+        return {"ok": False, "code": "not_configured", "error": "Integração com o Prisma não configurada."}
     req = urllib.request.Request(
         GATEWAY_URL,
         data=json.dumps(payload).encode(),
@@ -454,6 +463,9 @@ def _propose(action: str, params: dict, file: str | None = None) -> str:
              "lock": threading.Lock(), "result": None}
     with _PENDING_LOCK:
         _PENDING[pending_id] = entry
+    # O3: o gateway guarda onde a prévia está, para retomá-la depois de um reinício. Se falhar, a prévia
+    # funciona igual; só não sobrevive a um reinício.
+    _request("preview_posted", {"pending_id": pending_id, "channel_id": channel_id, "message_id": message_id})
     _react(channel_id, message_id, YES)
     _react(channel_id, message_id, NO)
     threading.Thread(target=_watch, args=(pending_id, entry), name=f"prisma-preview-{pending_id[:8]}", daemon=True).start()
@@ -554,6 +566,70 @@ def _finish(pending_id: str, entry: dict, note: str, result: dict) -> None:
         entry["code"] = None
         entry["result"] = result
     _edit_message(entry["channel_id"], entry["message_id"], f"**Prévia — alteração no Prisma**\n{entry['summary']}\n\n{note}")
+
+
+RESUME_WAITS_S = (5, 10, 20, 40)  # esperas entre as tentativas de retomada (5 tentativas no total)
+_RESUME_STARTED = False
+
+
+def _should_resume() -> bool:
+    """Só o processo `gateway run` retoma: o painel também carrega o plugin, e uma segunda retomada giraria o
+    segredo de novo, invalidando o da primeira. PRISMA_RESUME=1/0 força (testes)."""
+    forced = os.environ.get("PRISMA_RESUME", "").strip()
+    if forced in {"0", "1"}:
+        return forced == "1"
+    argv = sys.argv[1:]
+    return any(a == "gateway" and argv[i + 1:i + 2] == ["run"] for i, a in enumerate(argv))
+
+
+def _epoch(iso: str) -> float:
+    from datetime import datetime
+    return datetime.fromisoformat(iso.replace("Z", "+00:00")).timestamp()
+
+
+def _resume_previews() -> int:
+    """Pede ao gateway as prévias abertas (cada uma com um segredo novo) e volta a observá-las.
+
+    Não reposta nem reage de novo: a mensagem e as reações do bot já estão na DM."""
+    res: dict = {}
+    for wait in (0, *RESUME_WAITS_S):
+        time.sleep(wait)
+        res = _resume_request()
+        code = str(res.get("code") or "")
+        if res.get("ok") or not (code in {"unavailable", "internal"} or code.startswith("http_5")):
+            break
+    if not res.get("ok"):
+        print(f"prisma: retomada de prévias falhou ({res.get('code', 'erro')})", flush=True)
+        return 0
+    resumed = 0
+    for item in res.get("data") or []:
+        try:
+            pending_id = str(item["pending_id"])
+            user_id = str(item["discord_user_id"])
+            entry = {"code": str(item["code"]), "user_id": user_id, "channel_id": str(item["channel_id"]),
+                     "message_id": str(item["message_id"]), "expires": _epoch(str(item["expires_at"])),
+                     "file": None, "summary": _split_preview(str(item.get("summary") or ""))[1],
+                     "lock": threading.Lock(), "result": None}
+        except (KeyError, TypeError, ValueError):
+            continue
+        if not user_id.isdigit():
+            continue
+        with _PENDING_LOCK:
+            if pending_id in _PENDING:
+                continue
+            _PENDING[pending_id] = entry
+        threading.Thread(target=_watch, args=(pending_id, entry), name=f"prisma-preview-{pending_id[:8]}", daemon=True).start()
+        resumed += 1
+    print(f"prisma: prévias retomadas: {resumed}", flush=True)
+    return resumed
+
+
+def _start_resume() -> None:
+    global _RESUME_STARTED
+    if _RESUME_STARTED or not _should_resume():
+        return
+    _RESUME_STARTED = True
+    threading.Thread(target=_resume_previews, name="prisma-resume", daemon=True).start()
 
 
 def _str(args: dict, name: str) -> str | None:
@@ -981,3 +1057,4 @@ def register(ctx) -> None:
     for name, handler, emoji, schema in TOOLS:
         ctx.register_tool(name=name, toolset="prisma", schema=schema, handler=handler, emoji=emoji)
     ctx.register_transcription_provider(_transcription_provider())
+    _start_resume()
