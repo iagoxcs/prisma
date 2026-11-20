@@ -198,8 +198,8 @@ function ProjetoDetalhe() {
         </div>
       )}
 
-      {/* Em telas estreitas as abas rolam na horizontal em vez de quebrar linha. */}
-      <div role="tablist" aria-label="Visões do projeto" onKeyDown={onTabKeyDown} className={cn(SEGMENTED, "max-w-full flex-nowrap overflow-x-auto")}>
+      {/* Em telas estreitas as abas quebram linha: com rolagem, as últimas ficavam cortadas e escondidas. */}
+      <div role="tablist" aria-label="Visões do projeto" onKeyDown={onTabKeyDown} className={cn(SEGMENTED, "max-w-full")}>
         {allowedTabs.map((t) => (
           <button
             key={t.id}

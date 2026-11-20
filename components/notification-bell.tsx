@@ -100,7 +100,10 @@ export function NotificationBell() {
         )}
       </Button>
       {open && (
-        <div className="absolute right-0 z-50 mt-2 w-80 max-w-[90vw] overflow-hidden rounded-lg border bg-popover text-popover-foreground">
+        // No celular o sino não fica na borda direita: ancorado nele, o menu saía pela esquerda da tela.
+        // Abaixo de md ele ocupa a largura da tela (o cabeçalho não está dentro da lâmina com blur, então fixed é relativo à janela).
+        <div className="fixed inset-x-3 top-16 z-50 overflow-hidden rounded-lg border bg-popover text-popover-foreground md:absolute md:inset-x-auto md:top-auto md:right-0 md:mt-2 md:w-80">
+
           <div className="flex min-h-11 items-center justify-between border-b px-4 text-sm">
             <span className="font-semibold">Notificações</span>
             {count > 0 && (
@@ -109,7 +112,7 @@ export function NotificationBell() {
               </button>
             )}
           </div>
-          <ul className="max-h-96 divide-y overflow-y-auto">
+          <ul className="max-h-[min(24rem,calc(100dvh-12rem))] divide-y overflow-y-auto">
             {(latest.data ?? []).map((n) => (
               <li key={n.id}>
                 <button type="button" onClick={() => openNotification(n)} className="flex w-full gap-2.5 px-4 py-3 text-left text-sm hover:bg-accent">
