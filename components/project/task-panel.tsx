@@ -18,6 +18,7 @@ import { MSG_ERROR, OVERLAY, SELECT_CLASS as BASE_SELECT, TEXTAREA_CLASS, restor
 import { useQuery } from "@/lib/use-query";
 import { cn } from "@/lib/utils";
 import {
+  isOpenTask,
   MAX_ATTACHMENT_BYTES,
   TASK_STATUS_LABEL,
   todayISO,
@@ -81,7 +82,7 @@ export function TaskPanel({
   const requestClose = () => (dirty ? setConfirmDiscard(true) : onClose());
 
   if (!task) return null;
-  const overdue = !!task.due_date && task.status !== "done" && task.due_date < todayISO();
+  const overdue = !!task.due_date && isOpenTask(task.status) && task.due_date < todayISO();
   // Portal para o <body>: a lâmina (<main>) tem backdrop-filter, que prenderia o position: fixed dentro dela.
   // O drawer é sólido (bg-popover), como os diálogos: vidro sobre o Kanban comprometia a leitura dos campos.
   // key força o formulário a reinicializar ao trocar de tarefa.

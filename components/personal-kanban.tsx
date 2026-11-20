@@ -29,7 +29,7 @@ import { getSupabase } from "@/lib/supabase/client";
 import { OVERDUE_BADGE, TASK_STATUS_DOT } from "@/lib/theme/status";
 import { DIALOG, MSG_ERROR, OVERLAY, restoreFocus, TEXTAREA_CLASS, trapFocus } from "@/lib/ui";
 import { cn } from "@/lib/utils";
-import { TASK_STATUS_LABEL, todayISO, type TaskStatus } from "@/types/domain";
+import { BOARD_STATUSES, TASK_STATUS_LABEL, todayISO, type TaskStatus } from "@/types/domain";
 import type { Json } from "@/types/database";
 
 export type PersonalTask = {
@@ -56,7 +56,8 @@ function readChecklist(raw: Json): ChecklistItem[] {
   });
 }
 
-const COLUMNS: TaskStatus[] = ["todo", "doing", "done"];
+const COLUMNS: TaskStatus[] = [...BOARD_STATUSES];
+// "cancelled" existe no tipo, mas nunca é coluna: fica sempre vazio aqui.
 type Order = Record<TaskStatus, string[]>;
 
 const isColumn = (id: UniqueIdentifier): id is TaskStatus => (COLUMNS as UniqueIdentifier[]).includes(id);
@@ -79,8 +80,8 @@ export function PersonalKanban({ tasks, onChanged }: { tasks: PersonalTask[]; on
 
   const byId = useMemo(() => new Map(items.map((t) => [t.id, t])), [items]);
   const baseOrder: Order = useMemo(() => {
-    const o: Order = { todo: [], doing: [], done: [] };
-    for (const t of [...items].sort(byPosition)) o[t.status].push(t.id);
+    const o: Order = { todo: [], doing: [], done: [], cancelled: [] };
+    for (const t of [...items].sort(byPosition)) if (t.status !== "cancelled") o[t.status].push(t.id);
     return o;
   }, [items]);
   const shown = order ?? baseOrder;

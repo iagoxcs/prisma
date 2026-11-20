@@ -24,7 +24,7 @@ import { categoryColor, OVERDUE_BADGE, PROJECT_STATUS_COLOR, TASK_STATUS_COLOR }
 import { MSG_ERROR, SEGMENTED, SEGMENT_ITEM, SELECT_CLASS } from "@/lib/ui";
 import { useQuery } from "@/lib/use-query";
 import { cn } from "@/lib/utils";
-import { PROJECT_STATUS_LABEL, todayISO, type Category, type Person, type Project, type ProjectStatus, type Task } from "@/types/domain";
+import { isOpenTask, PROJECT_STATUS_LABEL, todayISO, type Category, type Person, type Project, type ProjectStatus, type Task } from "@/types/domain";
 import { Select } from "@/components/ui/select";
 
 type Tab = "quadro" | "lista" | "cronograma" | "documentos" | "contexto" | "membros" | "escopos";
@@ -136,7 +136,9 @@ function ProjetoDetalhe() {
     const cats = new Map((categories.data ?? []).map((c) => [c.id, c]));
     const names = new Map((people.data ?? []).map((p) => [p.id, p.name]));
     const today = todayISO();
+    // Canceladas ficam fora do Cronograma (aparecem só na Lista, pelo filtro "Canceladas").
     return (tasks.data ?? [])
+      .filter((t) => t.status !== "cancelled")
       .map((t) => ({
         id: t.id,
         label: t.title,
@@ -145,7 +147,7 @@ function ProjetoDetalhe() {
         end: t.due_date,
         color: t.category_id && cats.get(t.category_id) ? categoryColor(cats.get(t.category_id)!.color) : TASK_STATUS_COLOR[t.status],
         done: t.status === "done",
-        overdue: t.status !== "done" && !!t.due_date && t.due_date < today,
+        overdue: isOpenTask(t.status) && !!t.due_date && t.due_date < today,
       }))
       .sort((a, b) => (a.start ?? a.end ?? "9").localeCompare(b.start ?? b.end ?? "9"));
   }, [tasks.data, categories.data, people.data]);
