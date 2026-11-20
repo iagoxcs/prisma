@@ -2,7 +2,9 @@
 // Chamado servidor a servidor (verify_jwt = false) por dois clientes, cada um com o seu segredo:
 // - plugin do Hermes (x-hermes-secret): leitura e escrita em duas fases (propose/commit, Etapa 5). O
 //   discord_user_id vem do contexto da sessão do Hermes, nunca do LLM (spike S1), e tudo roda com a sessão
-//   do próprio usuário (RLS).
+//   do próprio usuário (RLS). Prévias resistentes a reinício (O3): depois de postar a prévia, o plugin grava
+//   canal e mensagem com preview_posted; ao iniciar, chama resume_previews (sem usuário) e recebe as prévias
+//   abertas com um código novo, porque o banco guarda só o hash do anterior.
 // - rotina diária (x-routine-secret, Etapa 4): só lista os canais mapeados e grava o resumo do dia.
 //   Não há usuário: roda com o service_role, restrita a essas duas operações (N5).
 import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
@@ -16,7 +18,9 @@ const EXCERPT = 2000;
 const TOOLS = ["list_projects", "list_tasks", "get_task", "list_members", "search_context", "search_knowledge"] as const;
 // whoami (Etapa 6): só confirma que o autor está vinculado a um perfil ativo e interno, sem abrir sessão.
 // O plugin consulta antes de enviar um áudio ao provedor de transcrição.
-const WRITE_TOOLS = ["propose", "commit", "cancel", "whoami"] as const;
+// preview_posted (O3): o plugin informa onde postou a prévia, para retomá-la depois de um reinício.
+const WRITE_TOOLS = ["propose", "commit", "cancel", "whoami", "preview_posted"] as const;
+const RESUME_LIMIT = 200; // O3: prévias devolvidas por resume_previews
 const ROUTINE_TOOLS = ["routine_list_channels", "routine_upsert_context"] as const;
 type Tool = (typeof TOOLS)[number];
 type Args = Record<string, unknown>;
@@ -791,6 +795,70 @@ async function handleRoutine(req: Request, given: string): Promise<Response> {
   }
 }
 
+// resume_previews (O3): chamado pelo plugin ao iniciar, sem usuário (já autenticado pelo x-hermes-secret).
+// Devolve as prévias abertas que já têm mensagem no Discord, cada uma com um código novo (o anterior não pode
+// ser recuperado: o banco guarda só o hash). Anexos ficam de fora: o arquivo local não sobrevive ao reinício.
+// O código nunca vai ao log; a confirmação continua exigindo o ✅ do usuário, conferido pelo plugin.
+async function handleResume(requestId: string): Promise<Response> {
+  const service = serviceClient();
+  const audit = async (status: Status, result: Record<string, unknown>) => {
+    const { error } = await service.from("ai_actions_log").insert({
+      source: "discord",
+      status,
+      tool: "resume_previews",
+      user_id: null,
+      input: { args: {} },
+      result,
+      request_id: requestId,
+      project_id: null,
+      external_ref: null,
+    });
+    if (error) console.error(`ai_actions_log: falha ao gravar (${error.code ?? "sem código"})`);
+  };
+
+  try {
+    const { data: rows, error } = await service
+      .from("ai_pending_actions")
+      .select("id, tool, input, discord_user_id, discord_channel_id, discord_message_id, expires_at")
+      .eq("status", "proposed")
+      .gt("expires_at", new Date().toISOString())
+      .not("discord_message_id", "is", null)
+      .neq("tool", "attach_file")
+      .order("expires_at")
+      .limit(RESUME_LIMIT);
+    if (error) throw error;
+
+    const out: Record<string, unknown>[] = [];
+    for (const r of rows ?? []) {
+      if (!r.discord_user_id || !r.discord_channel_id) continue;
+      const code = newCode();
+      const { data: rotated, error: upErr } = await service
+        .from("ai_pending_actions")
+        .update({ code_hash: await codeHash(r.id, code) })
+        .eq("id", r.id)
+        .eq("status", "proposed")
+        .select("id");
+      if (upErr) throw upErr;
+      if (!rotated?.length) continue; // confirmada ou cancelada no meio do caminho
+      out.push({
+        pending_id: r.id,
+        discord_user_id: r.discord_user_id,
+        channel_id: r.discord_channel_id,
+        message_id: r.discord_message_id,
+        code,
+        summary: (r.input as { summary?: string } | null)?.summary ?? "",
+        expires_at: r.expires_at,
+      });
+    }
+    await audit("executed", { count: out.length });
+    return json({ ok: true, tool: "resume_previews", count: out.length, data: out });
+  } catch (e) {
+    console.error(`ai-gateway: resume_previews falhou (${e instanceof Error ? e.message : "erro"})`);
+    await audit("error", { code: "internal" });
+    return json({ code: "internal", error: "Erro interno." }, 500);
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ code: "method_not_allowed", error: "Método não permitido." }, 405);
 
@@ -808,6 +876,14 @@ Deno.serve(async (req) => {
     body = await req.json();
   } catch {
     return json({ code: "invalid_json", error: "JSON inválido." }, 400);
+  }
+  if (body.tool === "resume_previews") {
+    if (body.discord_user_id !== undefined) {
+      return json({ code: "invalid_request", error: "resume_previews não recebe discord_user_id." }, 400);
+    }
+    const rid = typeof body.request_id === "string" ? body.request_id : "";
+    if (!UUID_RE.test(rid)) return json({ code: "invalid_request", error: "request_id inválido." }, 400);
+    return handleResume(rid);
   }
   const discordId = typeof body.discord_user_id === "string" ? body.discord_user_id : "";
   const requestId = typeof body.request_id === "string" ? body.request_id : "";
@@ -930,6 +1006,7 @@ Deno.serve(async (req) => {
     const { error } = await service.from("ai_pending_actions").insert({
       id: pendingId,
       user_id: userId,
+      discord_user_id: discordId,
       tool: action,
       input: { action, params, summary, project_id },
       code_hash: await codeHash(pendingId, code),
@@ -1035,8 +1112,33 @@ Deno.serve(async (req) => {
     return json({ ok: true, tool, data: { pending_id: pendingId, cancelled: true } });
   };
 
+  // preview_posted: grava uma única vez o canal e a mensagem da prévia. Só o dono e só enquanto aberta.
+  const previewPosted = async () => {
+    const pendingId = uuidArg(args, "pending_id", true)!;
+    const channelId = str(args, "channel_id", true)!;
+    const messageId = str(args, "message_id", true)!;
+    if (!CHANNEL_RE.test(channelId)) throw new GatewayError(400, "invalid_args", "channel_id inválido.");
+    if (!CHANNEL_RE.test(messageId)) throw new GatewayError(400, "invalid_args", "message_id inválido.");
+    const { data, error } = await service
+      .from("ai_pending_actions")
+      .update({ discord_channel_id: channelId, discord_message_id: messageId })
+      .eq("id", pendingId)
+      .eq("user_id", userId!)
+      .eq("status", "proposed")
+      .gt("expires_at", new Date().toISOString())
+      .is("discord_message_id", null)
+      .select("id, tool, input");
+    if (error) throw error;
+    if (!data?.length) throw new GatewayError(404, "not_pending", "Não há prévia aberta com esse id.");
+    auditTool = `preview_posted:${data[0].tool}`.slice(0, 64);
+    projectArg = (data[0].input as { project_id?: string })?.project_id ?? null;
+    await audit("executed", { pending_id: pendingId });
+    return json({ ok: true, tool, data: { pending_id: pendingId } });
+  };
+
   try {
     if (tool === "cancel") return await cancel();
+    if (tool === "preview_posted") return await previewPosted();
     if (tool === "whoami") {
       await audit("executed", { linked: true });
       return json({ ok: true, tool, data: { linked: true } });
