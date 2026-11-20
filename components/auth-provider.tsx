@@ -33,8 +33,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loadProfile = useCallback(async (s: Session | null, force = false) => {
     const supabase = getSupabase();
-    const run = ++seq.current;
     if (!s) {
+      ++seq.current;
       loadedFor.current = null;
       setSession(null);
       setProfile(null);
@@ -44,10 +44,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
     if (!force && loadedFor.current === s.user.id) {
-      // Mesmo usuário (renovação do token): troca só a sessão, o perfil continua válido.
+      // Mesmo usuário (renovação do token, ou getSession e INITIAL_SESSION chegando juntos): troca só a
+      // sessão. Não mexe em seq: se o perfil ainda está carregando, é aquela chamada que termina o loading.
       setSession(s);
       return;
     }
+    const run = ++seq.current;
     loadedFor.current = s.user.id;
     // Sessão e perfil mudam juntos: sem isso o AppShell via "sessão sem perfil" e mostrava
     // "Acesso pendente" logo depois do login, até a consulta do perfil voltar.
