@@ -50,6 +50,9 @@ const STATUS_ALIASES: Record<string, TaskStatus> = {
   done: "done",
   concluido: "done",
   concluida: "done",
+  cancelada: "cancelled",
+  cancelado: "cancelled",
+  cancelled: "cancelled",
 };
 
 // Separador dos itens de checklist dentro da célula.

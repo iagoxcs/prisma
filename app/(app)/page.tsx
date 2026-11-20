@@ -120,7 +120,7 @@ export default function DashboardPage() {
             .from("tasks")
             .select("id, project_id, title, due_date, projects(name)", { count: "exact" })
             .eq("assignee_id", profile.id)
-            .neq("status", "done")
+            .not("status", "in", "(done,cancelled)")
             .or(`due_date.is.null,due_date.lte.${limit}`)
             .order("due_date", { ascending: true, nullsFirst: false })
             .limit(TASK_LIMIT)

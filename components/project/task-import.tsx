@@ -143,7 +143,7 @@ export function TaskImport({
     }
 
     // Novas tarefas entram no fim de cada coluna, na ordem do arquivo.
-    const next: Record<TaskStatus, number> = { todo: 0, doing: 0, done: 0 };
+    const next: Record<TaskStatus, number> = { todo: 0, doing: 0, done: 0, cancelled: 0 };
     for (const s of Object.keys(next) as TaskStatus[]) {
       next[s] = Math.max(0, ...tasks.filter((t) => t.status === s).map((t) => t.position));
     }
