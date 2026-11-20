@@ -1338,7 +1338,7 @@ export type Database = {
         | "pausado"
         | "concluido"
         | "cancelado"
-      task_status: "todo" | "doing" | "done"
+      task_status: "todo" | "doing" | "done" | "cancelled"
       user_role: "admin" | "gerente" | "lider" | "consultor" | "externo"
     }
     CompositeTypes: {
@@ -1475,7 +1475,7 @@ export const Constants = {
         "concluido",
         "cancelado",
       ],
-      task_status: ["todo", "doing", "done"],
+      task_status: ["todo", "doing", "done", "cancelled"],
       user_role: ["admin", "gerente", "lider", "consultor", "externo"],
     },
   },

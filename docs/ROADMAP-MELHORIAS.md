@@ -30,7 +30,7 @@ Legenda: ✅ feito · 🟡 parcial · ⬜ pendente · ⛔ aguarda decisão (seç
 | 20 | 4 | I6 | Estados vazios que orientam | Contexto vazio → "Importar ata"; Conhecimento vazio → "Publicar metodologia" | — | ⬜ | |
 | 21 | 4 | E6 | Arquivar projetos concluídos | Arquivados fora das listas, do Realtime e da rotina diária, com filtro "Mostrar arquivados" | — | ⬜ | |
 | 22 | 5 | P1 | Login, Meu painel, menu e exclusões | Login sem passar por "Acesso pendente" (sessão e perfil trocam juntos; falha ao ler o perfil mostra erro com nova tentativa); seções do Meu painel recolhíveis; menu lateral recolhível (só ícones); admin exclui projeto (digitando o nome; anexos saem do Storage) e cliente (bloqueado se houver projetos) | — | ✅ | |
-| 23 | 5 | P2 | Tarefa cancelada (schema) | task_status ganha cancelled; cancelada fica fora de prazos, avisos, e-mails, atraso, lembrete sem prazo e do total dos indicadores | — | ⬜ | |
+| 23 | 5 | P2 | Tarefa cancelada (schema) | task_status ganha cancelled; cancelada fica fora de prazos, avisos, e-mails, atraso, lembrete sem prazo e do total dos indicadores | — | ✅ | |
 | 24 | 5 | P3 | Tarefa cancelada (front) | Status "Cancelada" no painel da tarefa; fora do Quadro e do Cronograma; na Lista só pelo filtro "Canceladas" | P2 | ⬜ | |
 | 25 | 5 | P4 | Excluir usuário (função) | admin-users ganha a ação delete; recusa o próprio usuário e o último admin ativo | — | ⬜ | |
 | 26 | 5 | P5 | Excluir usuário (front) | Botão Excluir em Configurações > Usuários, com confirmação | P4 | ⬜ | |
