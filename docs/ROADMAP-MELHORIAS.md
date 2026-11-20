@@ -34,7 +34,7 @@ Legenda: ✅ feito · 🟡 parcial · ⬜ pendente · ⛔ aguarda decisão (seç
 | 24 | 5 | P3 | Tarefa cancelada (front) | Status "Cancelada" no painel da tarefa; fora do Quadro e do Cronograma; na Lista só pelo filtro "Canceladas" | P2 | ✅ | #68 |
 | 25 | 5 | P4 | Excluir usuário (função) | admin-users ganha a ação delete; recusa o próprio usuário e o último admin ativo | — | ✅ | #69 |
 | 26 | 5 | P5 | Excluir usuário (front) | Botão Excluir em Configurações > Usuários, com confirmação | P4 | ✅ | #70 |
-| 27 | 5 | P6 | Lista de tarefas pelo Discord numa prévia só | Plugin 0.7.0: prisma_criar_tarefas_lote vale para qualquer lista (texto, planilha, arquivo, ata); duas ou mais tarefas nunca viram prévias separadas | — | 🟡 (0.7.0 instalado em 19/11/2026 ainda gerava uma prévia por tarefa; 0.7.1 junta as propostas no código; falta instalar e validar) | #71 |
+| 27 | 5 | P6 | Lista de tarefas pelo Discord numa prévia só | Plugin 0.7.0: prisma_criar_tarefas_lote vale para qualquer lista (texto, planilha, arquivo, ata); duas ou mais tarefas nunca viram prévias separadas | — | ✅ | #71, #72, #74 |
 
 ## 2. Reprovados (não implementar)
 
