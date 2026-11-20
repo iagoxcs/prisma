@@ -12,7 +12,7 @@ import { categoryColor, OVERDUE_BADGE, TASK_STATUS_DOT } from "@/lib/theme/statu
 import { MSG_ERROR, SELECT_CLASS } from "@/lib/ui";
 import { usePageSize } from "@/lib/use-page-size";
 import { cn } from "@/lib/utils";
-import { TASK_STATUS_LABEL, todayISO, type Category, type Person, type Task, type TaskStatus } from "@/types/domain";
+import { BOARD_STATUSES, isOpenTask, TASK_STATUS_LABEL, todayISO, type Category, type Person, type Task, type TaskStatus } from "@/types/domain";
 import { Select } from "@/components/ui/select";
 
 type SortKey = "title" | "category" | "status" | "assignee" | "start" | "due";
@@ -26,7 +26,7 @@ const COLUMNS: { key: SortKey; label: string }[] = [
   { key: "start", label: "Início" },
   { key: "due", label: "Prazo" },
 ];
-const STATUS_ORDER: Record<TaskStatus, number> = { todo: 0, doing: 1, done: 2 };
+const STATUS_ORDER: Record<TaskStatus, number> = { todo: 0, doing: 1, done: 2, cancelled: 3 };
 const collator = new Intl.Collator("pt-BR", { sensitivity: "base" });
 
 // Visão em tabela das mesmas tarefas do Quadro: ordena, filtra e pagina no cliente (sem nova consulta).
@@ -69,7 +69,8 @@ export function TaskList({
         (!term || t.title.toLocaleLowerCase("pt-BR").includes(term)) &&
         (!assignee || t.assignee_id === assignee) &&
         (!category || t.category_id === category) &&
-        (!status || t.status === status),
+        // Canceladas só aparecem pelo filtro "Canceladas"; "Todos" mostra as demais.
+        (status ? t.status === status : t.status !== "cancelled"),
     );
     const value = (t: Task): string | number | null => {
       switch (sort.key) {
@@ -172,10 +173,11 @@ export function TaskList({
           value={status}
           onChange={(e) => filter(setStatus)(e.target.value as TaskStatus | "")}
         >
-          <option value="">Todos os status</option>
-          {(Object.keys(TASK_STATUS_LABEL) as TaskStatus[]).map((s) => (
+          <option value="">Todos, menos canceladas</option>
+          {BOARD_STATUSES.map((s) => (
             <option key={s} value={s}>{TASK_STATUS_LABEL[s]}</option>
           ))}
+          <option value="cancelled">Canceladas</option>
         </Select>
       </div>
 
@@ -243,7 +245,7 @@ export function TaskList({
             <tbody>
               {visible.map((t) => {
                 const cat = t.category_id ? cats.get(t.category_id) : undefined;
-                const overdue = t.status !== "done" && !!t.due_date && t.due_date < today;
+                const overdue = isOpenTask(t.status) && !!t.due_date && t.due_date < today;
                 return (
                   <tr key={t.id} className={cn("h-13 border-b last:border-b-0", picked.has(t.id) && "bg-muted/60")}>
                     {canBulkDelete && (

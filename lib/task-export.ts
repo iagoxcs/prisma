@@ -30,7 +30,7 @@ const concludedOn = (ctx: Ctx, t: Task) => {
   return ts ? brDateFromTs(ts) : "";
 };
 
-const STATUS_ORDER: TaskStatus[] = ["todo", "doing", "done"];
+const STATUS_ORDER: TaskStatus[] = ["todo", "doing", "done", "cancelled"];
 
 const sorted = (tasks: Task[]) =>
   [...tasks].sort((a, b) => STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status) || a.position - b.position);

@@ -16,6 +16,7 @@ export const TASK_STATUS_COLOR: Record<TaskStatus, string> = {
   todo: "var(--status-todo)",
   doing: "var(--status-doing)",
   done: "var(--status-done)",
+  cancelled: "var(--status-cancelled)",
 };
 
 // Atraso/vencimento NÃO é um status: é uma condição sobreposta a qualquer status.
@@ -28,6 +29,7 @@ export const TASK_STATUS_DOT: Record<TaskStatus, string> = {
   todo: "bg-status-todo",
   doing: "bg-status-doing",
   done: "bg-status-done",
+  cancelled: "bg-status-cancelled",
 };
 
 export const OVERDUE_BADGE = "bg-warning-surface text-warning";

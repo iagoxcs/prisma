@@ -3,14 +3,30 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
-import { Bell, BookOpen, Briefcase, Building2, CalendarRange, ChartColumn, CircleUser, FileText, LayoutDashboard, LogOut, Settings } from "lucide-react";
+import {
+  Bell,
+  BookOpen,
+  Briefcase,
+  Building2,
+  CalendarRange,
+  ChartColumn,
+  CircleUser,
+  FileText,
+  LayoutDashboard,
+  LogOut,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Settings,
+} from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import { NotificationBell } from "@/components/notification-bell";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { PrismaMark, PrismaWordmark } from "@/components/brand/prisma-mark";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { ErrorState } from "@/components/ui/error-state";
 import type { Permission } from "@/lib/permissions";
 import { ORG_NAME } from "@/lib/settings";
+import { useStoredFlag } from "@/lib/use-stored-flag";
 import { cn } from "@/lib/utils";
 import { ROLE_LABEL } from "@/types/domain";
 
@@ -28,7 +44,9 @@ const NAV = [
 
 // O gate é só UX: a segurança real é o RLS no banco.
 export function AppShell({ children }: { children: ReactNode }) {
-  const { loading, session, profile, can, signOut } = useAuth();
+  const { loading, session, profile, profileError, can, retry, signOut } = useAuth();
+  // Menu lateral recolhido (só ícones). Preferência do navegador; no celular o menu é a faixa do topo.
+  const [collapsed, setCollapsed] = useStoredFlag("prisma.menu-recolhido");
   const pathname = usePathname();
   const router = useRouter();
 
@@ -40,6 +58,21 @@ export function AppShell({ children }: { children: ReactNode }) {
     return (
       <div className="flex min-h-screen items-center justify-center p-8">
         <PrismaMark size={40} title="Carregando" className="animate-pulse motion-reduce:animate-none" />
+      </div>
+    );
+  }
+
+  // Falha ao ler o perfil não é conta inativa: oferece nova tentativa em vez de "Acesso pendente".
+  if (profileError) {
+    return (
+      <div className="flex min-h-screen items-center justify-center p-5">
+        <main className="glass-lamina w-full max-w-md space-y-4 p-6">
+          <PrismaMark size={36} className="mx-auto" />
+          <ErrorState what="seu perfil" detail={profileError} onRetry={retry} />
+          <Button variant="outline" className="w-full" onClick={signOut}>
+            Sair
+          </Button>
+        </main>
       </div>
     );
   }
@@ -69,12 +102,28 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-screen gap-5 p-3 md:p-5">
       {/* Painel de navegação: lâmina de vidro (glass-painel) */}
-      <aside className="glass-painel sticky top-5 hidden h-[calc(100vh-2.5rem)] w-60 shrink-0 flex-col p-4 md:flex">
-        <Link href="/" className="mb-7 block px-2 pt-1" aria-label="Prisma, ir para o Meu painel">
-          <PrismaWordmark />
-          <span className="mt-1 block truncate pl-[2.45rem] text-[0.8125rem] font-medium text-muted-foreground">{ORG_NAME}</span>
+      <aside
+        className={cn(
+          "glass-painel sticky top-5 hidden h-[calc(100vh-2.5rem)] shrink-0 flex-col overflow-hidden py-4 transition-[width] duration-200 ease-out motion-reduce:transition-none md:flex",
+          collapsed ? "w-[4.5rem] px-2.5" : "w-60 px-4",
+        )}
+      >
+        <Link
+          href="/"
+          className={cn("mb-7 block pt-1", collapsed ? "flex justify-center px-0" : "px-2")}
+          aria-label="Prisma, ir para o Meu painel"
+          title={collapsed ? "Meu painel" : undefined}
+        >
+          {collapsed ? (
+            <PrismaMark size={34} />
+          ) : (
+            <>
+              <PrismaWordmark />
+              <span className="mt-1 block truncate pl-[2.45rem] text-[0.8125rem] font-medium text-muted-foreground">{ORG_NAME}</span>
+            </>
+          )}
         </Link>
-        <nav className="flex flex-1 flex-col gap-1" aria-label="Navegação principal">
+        <nav className="flex flex-1 flex-col gap-1 overflow-y-auto overflow-x-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Navegação principal">
           {items.map(({ href, label, icon: Icon }) => {
             const active = isActive(href);
             return (
@@ -82,33 +131,65 @@ export function AppShell({ children }: { children: ReactNode }) {
                 key={href}
                 href={href}
                 aria-current={active ? "page" : undefined}
+                aria-label={collapsed ? label : undefined}
+                title={collapsed ? label : undefined}
                 className={cn(
-                  "flex min-h-11 items-center gap-3 rounded-md px-3 text-[0.9375rem] font-medium text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground",
+                  "flex min-h-11 shrink-0 items-center gap-3 rounded-md text-[0.9375rem] font-medium whitespace-nowrap text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground",
+                  collapsed ? "justify-center px-0" : "px-3",
                   active && "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground",
                 )}
               >
-                <Icon className="size-[18px]" strokeWidth={1.75} />
-                {label}
+                <Icon className="size-[18px] shrink-0" strokeWidth={1.75} aria-hidden />
+                {!collapsed && label}
               </Link>
             );
           })}
         </nav>
-        <div className="mt-4 rounded-lg bg-sidebar-accent p-3 text-sm">
-          <div className="font-semibold">{profile.name}</div>
-          <div className="text-muted-foreground">{ROLE_LABEL[profile.role]}</div>
-          <div className="mt-2 -ml-2 flex flex-wrap">
+        {collapsed ? (
+          <div className="mt-4 flex flex-col items-center gap-1">
             <Link
               href="/conta/"
               aria-current={isActive("/conta/") ? "page" : undefined}
-              className={cn(buttonVariants({ variant: "ghost", size: "sm" }), isActive("/conta/") && "text-foreground")}
+              aria-label={`Minha conta (${profile.name})`}
+              title={`${profile.name} · ${ROLE_LABEL[profile.role]}`}
+              className={cn(buttonVariants({ variant: "ghost", size: "icon" }), isActive("/conta/") && "text-foreground")}
             >
-              <CircleUser strokeWidth={1.75} /> Minha conta
+              <CircleUser strokeWidth={1.75} />
             </Link>
-            <Button variant="ghost" size="sm" onClick={signOut}>
-              <LogOut strokeWidth={1.75} /> Sair
+            <Button variant="ghost" size="icon" aria-label="Sair" title="Sair" onClick={signOut}>
+              <LogOut strokeWidth={1.75} />
             </Button>
           </div>
-        </div>
+        ) : (
+          <div className="mt-4 rounded-lg bg-sidebar-accent p-3 text-sm">
+            <div className="truncate font-semibold">{profile.name}</div>
+            <div className="text-muted-foreground">{ROLE_LABEL[profile.role]}</div>
+            <div className="mt-2 -ml-2 flex flex-wrap">
+              <Link
+                href="/conta/"
+                aria-current={isActive("/conta/") ? "page" : undefined}
+                className={cn(buttonVariants({ variant: "ghost", size: "sm" }), isActive("/conta/") && "text-foreground")}
+              >
+                <CircleUser strokeWidth={1.75} /> Minha conta
+              </Link>
+              <Button variant="ghost" size="sm" onClick={signOut}>
+                <LogOut strokeWidth={1.75} /> Sair
+              </Button>
+            </div>
+          </div>
+        )}
+        <Button
+          variant="ghost"
+          size={collapsed ? "icon" : "sm"}
+          className={cn("mt-2 text-muted-foreground", collapsed ? "self-center" : "justify-start")}
+          aria-expanded={!collapsed}
+          aria-label={collapsed ? "Expandir menu" : "Recolher menu"}
+          title={collapsed ? "Expandir menu" : undefined}
+          onClick={() => setCollapsed(!collapsed)}
+        >
+          {collapsed ? <PanelLeftOpen strokeWidth={1.75} /> : <PanelLeftClose strokeWidth={1.75} />}
+          {!collapsed && "Recolher menu"}
+        </Button>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col gap-3">

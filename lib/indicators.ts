@@ -166,7 +166,7 @@ export interface ScopeBar {
 export function scopeBars(rows: ScopeRow[], names: Map<string, string>): ScopeBar[] {
   const byName = new Map<string, ScopeBar>();
   for (const r of rows) {
-    if (!r.status) continue;
+    if (!r.status || r.status === "cancelled") continue;
     const name = r.category_id ? (names.get(r.category_id) ?? NO_SCOPE) : NO_SCOPE;
     const bar = byName.get(name) ?? { name, todo: 0, doing: 0, done: 0, open: 0, total: 0 };
     const n = r.task_count ?? 0;

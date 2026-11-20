@@ -3,7 +3,12 @@
 
 export type UserRole = "admin" | "gerente" | "lider" | "consultor" | "externo";
 export type ProjectStatus = "planejamento" | "em_andamento" | "pausado" | "concluido" | "cancelado";
-export type TaskStatus = "todo" | "doing" | "done";
+export type TaskStatus = "todo" | "doing" | "done" | "cancelled";
+/** Status do Quadro (colunas). Cancelada não é coluna: aparece só na Lista, pelo filtro "Canceladas". */
+export const BOARD_STATUSES = ["todo", "doing", "done"] as const satisfies readonly TaskStatus[];
+export type BoardStatus = (typeof BOARD_STATUSES)[number];
+/** Tarefa ainda por fazer: nem feita nem cancelada (é o que conta para atraso e prazos). */
+export const isOpenTask = (status: TaskStatus) => status !== "done" && status !== "cancelled";
 
 // A interface usa "Líderes" (não "Leaders"/"Lideres").
 export const ROLE_LABEL: Record<UserRole, string> = {
@@ -26,6 +31,7 @@ export const TASK_STATUS_LABEL: Record<TaskStatus, string> = {
   todo: "A Fazer",
   doing: "Fazendo",
   done: "Feito",
+  cancelled: "Cancelada",
 };
 
 export type ProjectHealth = "on_track" | "at_risk" | "off_track";

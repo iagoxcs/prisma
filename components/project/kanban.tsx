@@ -30,13 +30,15 @@ import { getSupabase } from "@/lib/supabase/client";
 import { categoryColor, OVERDUE_BADGE, TASK_STATUS_DOT } from "@/lib/theme/status";
 import { MSG_ERROR, SEGMENT_ITEM, SELECT_CLASS } from "@/lib/ui";
 import { cn } from "@/lib/utils";
-import { TASK_STATUS_LABEL, todayISO, type Category, type Person, type Task, type TaskStatus } from "@/types/domain";
+import { BOARD_STATUSES, isOpenTask, TASK_STATUS_LABEL, todayISO, type Category, type Person, type Task, type TaskStatus } from "@/types/domain";
 import { Select } from "@/components/ui/select";
 
-const COLUMNS: TaskStatus[] = ["todo", "doing", "done"];
+// Cancelada não é coluna do Quadro: aparece só na Lista, pelo filtro "Canceladas".
+const COLUMNS: TaskStatus[] = [...BOARD_STATUSES];
 const MIN_GAP = 1e-6;
 const MOTION_MS = 180;
 
+// "cancelled" existe no tipo, mas nunca é coluna: fica sempre vazio aqui.
 type Order = Record<TaskStatus, string[]>;
 // Estado otimista: `items` é exibido enquanto arrasta, enquanto salva e até chegar uma lista nova do servidor
 // (referência diferente de `until`). Assim o Realtime não sobrescreve o arraste em andamento.
@@ -166,10 +168,10 @@ export function Kanban({
     (!filterAssignee || t.assignee_id === filterAssignee) &&
     (!filterCategory || t.category_id === filterCategory) &&
     (!filterMine || t.assignee_id === myId) &&
-    (!filterOverdue || (!!t.due_date && t.status !== "done" && t.due_date < today));
+    (!filterOverdue || (!!t.due_date && isOpenTask(t.status) && t.due_date < today));
   const visibleOrder: Order = useMemo(() => {
-    const o = { todo: [], doing: [], done: [] } as Order;
-    for (const t of [...base].sort(byPosition)) if (matches(t)) o[t.status].push(t.id);
+    const o: Order = { todo: [], doing: [], done: [], cancelled: [] };
+    for (const t of [...base].sort(byPosition)) if (t.status !== "cancelled" && matches(t)) o[t.status].push(t.id);
     return o;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [base, filterAssignee, filterCategory, filterMine, filterOverdue, myId, today]);

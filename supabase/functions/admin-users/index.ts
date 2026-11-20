@@ -96,6 +96,33 @@ Deno.serve(async (req) => {
     });
   }
 
+  // Exclusão definitiva: apaga o login (auth.users) e, em cascata, o perfil. Tarefas, comentários e
+  // anexos do usuário ficam sem autor/responsável (FKs "on delete set null"). Nunca o próprio chamador
+  // nem o último admin ativo, para o sistema não ficar sem administrador.
+  if (body.action === "delete") {
+    const target = body.user_id ?? "";
+    if (!/^[0-9a-f-]{36}$/i.test(target)) return json({ error: "user_id obrigatório" }, 400);
+    const { data: me } = await caller.auth.getUser(authHeader.replace(/^Bearer\s+/i, ""));
+    if (me.user?.id === target) return json({ error: "você não pode excluir a própria conta" }, 400);
+
+    const { data: prof, error: profErr } = await admin.from("profiles").select("role, active").eq("id", target).maybeSingle();
+    if (profErr) return json({ error: profErr.message }, 500);
+    if (prof?.role === "admin" && prof.active) {
+      const { count, error: cErr } = await admin
+        .from("profiles")
+        .select("id", { count: "exact", head: true })
+        .eq("role", "admin")
+        .eq("active", true)
+        .neq("id", target);
+      if (cErr) return json({ error: cErr.message }, 500);
+      if (!count) return json({ error: "não é possível excluir o último administrador ativo" }, 400);
+    }
+
+    const { error } = await admin.auth.admin.deleteUser(target);
+    if (error) return json({ error: error.message }, error.status === 404 ? 404 : 400);
+    return json({ ok: true });
+  }
+
   const password = body.password ?? "";
   if (password.length < 10) {
     return json({ error: "a senha deve ter ao menos 10 caracteres" }, 400);
