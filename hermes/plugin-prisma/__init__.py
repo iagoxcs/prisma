@@ -291,6 +291,14 @@ def _edit_message(channel_id: str, message_id: str, text: str) -> None:
         pass
 
 
+def _delete_message(channel_id: str, message_id: str) -> bool:
+    try:
+        _discord("DELETE", f"/channels/{channel_id}/messages/{message_id}")
+        return True
+    except DiscordError:
+        return False
+
+
 def _upload_file(channel_id: str, filename: str, data: bytes, mime: str, text: str) -> None:
     boundary = "prisma" + uuid.uuid4().hex
     payload = json.dumps({"content": text[:2000], "allowed_mentions": {"parse": []},
@@ -430,7 +438,7 @@ def _split_preview(summary: str) -> tuple[list[str], str]:
     return chunks, f"{head[:LIST_CHUNK // 2]}\n(lista completa nas mensagens acima)"
 
 
-def _propose(action: str, params: dict, file: str | None = None) -> str:
+def _propose(action: str, params: dict, file: str | None = None, batch: dict | None = None) -> str:
     # None = campo não informado; "" = limpar o campo (o gateway trata como vazio).
     clean = {k: v for k, v in params.items() if v is not None}
     res = _request("propose", {"action": action, "params": clean})
@@ -447,8 +455,7 @@ def _propose(action: str, params: dict, file: str | None = None) -> str:
         if not code or not pending_id:
             raise DiscordError("proposta sem segredo")
         channel_id = _dm_channel(user_id)
-        for chunk in chunks:
-            _post_message(channel_id, chunk)
+        extra_ids = [_post_message(channel_id, chunk) for chunk in chunks]
         message_id = _post_message(channel_id, text)
     except DiscordError:
         if pending_id:
@@ -460,7 +467,9 @@ def _propose(action: str, params: dict, file: str | None = None) -> str:
     _gc_pending()
     entry = {"code": code, "user_id": user_id, "channel_id": channel_id, "message_id": message_id,
              "expires": time.time() + CONFIRM_TTL_S, "file": file, "summary": summary,
-             "lock": threading.Lock(), "result": None}
+             "lock": threading.Lock(), "result": None,
+             # Criação de tarefas: guarda as tarefas para juntar propostas seguidas numa prévia só.
+             "batch": batch, "created": time.time(), "extra_ids": extra_ids}
     with _PENDING_LOCK:
         _PENDING[pending_id] = entry
     # O3: o gateway guarda onde a prévia está, para retomá-la depois de um reinício. Se falhar, a prévia
@@ -668,11 +677,81 @@ def _pick(args: dict, names: tuple[str, ...]) -> dict:
 _TASK_FIELDS = ("title", "description", "status", "assignee_id", "start_date", "due_date", "category_id")
 
 
-def criar_tarefa(args: dict, **_kw) -> str:
-    return _propose("create_task", _pick(args, ("project_id",) + _TASK_FIELDS))
-
-
 BATCH_MAX = 30  # igual ao do ai-gateway
+MERGE_WINDOW_S = 5 * 60  # propostas de criação no mesmo projeto, dentro desta janela, viram uma prévia só
+_CREATE_LOCKS: dict[str, threading.Lock] = {}
+
+
+def _supersede(pending_id: str, entry: dict, new_id: str) -> None:
+    """Retira uma prévia de criação que foi juntada a uma prévia nova (chamada com entry["lock"] em mãos)."""
+    _request("cancel", {"pending_id": pending_id}, as_user=entry["user_id"])
+    with _PENDING_LOCK:
+        entry["done"] = True
+        entry["code"] = None
+        entry["result"] = {"ok": False, "code": "superseded", "novo_pending_id": new_id,
+                           "error": "Esta prévia foi juntada a uma prévia única mais nova; use o novo_pending_id."}
+    for mid in entry.get("extra_ids") or []:
+        _delete_message(entry["channel_id"], mid)
+    if not _delete_message(entry["channel_id"], entry["message_id"]):
+        _edit_message(entry["channel_id"], entry["message_id"],
+                      f"{PREVIEW_HEAD}{entry['summary']}\n\nSubstituída pela prévia única logo abaixo. Nada foi gravado por esta.")
+
+
+def _propose_create(project_id: str | None, tasks: list[dict]) -> str:
+    """Cria tarefas sempre numa prévia só. Se o LLM propuser tarefas uma a uma (ou em lotes seguidos) no mesmo
+    projeto, a proposta nova absorve as prévias de criação ainda abertas da mesma pessoa feitas há pouco: posta
+    uma prévia única com todas e apaga as anteriores da DM. As propostas do mesmo usuário passam em fila, então
+    chamadas em paralelo também se juntam."""
+    _, _, user_id = _session()
+    with _PENDING_LOCK:
+        user_lock = _CREATE_LOCKS.setdefault(user_id, threading.Lock())
+    with user_lock:
+        now = time.time()
+        with _PENDING_LOCK:
+            candidates = sorted(
+                ((pid, e) for pid, e in _PENDING.items()
+                 if e["user_id"] == user_id and e.get("batch") and not e.get("done")
+                 and e["batch"].get("project_id") == project_id
+                 and now - e.get("created", 0) <= MERGE_WINDOW_S and now < e["expires"]),
+                key=lambda c: c[1]["created"])
+        held: list[tuple[str, dict]] = []
+        for pid, e in candidates:
+            if not e["lock"].acquire(blocking=False):  # sendo confirmada agora: fica como está
+                continue
+            if e.get("done"):
+                e["lock"].release()
+                continue
+            held.append((pid, e))
+        try:
+            previous = [t for _, e in held for t in e["batch"]["tasks"]]
+            if len(previous) + len(tasks) > BATCH_MAX:  # não cabe numa prévia: segue separada
+                for _, e in held:
+                    e["lock"].release()
+                held, previous = [], []
+            all_tasks = previous + tasks
+            batch = {"project_id": project_id, "tasks": all_tasks}
+            if len(all_tasks) == 1:
+                out = _propose("create_task", {"project_id": project_id, **all_tasks[0]}, batch=batch)
+            else:
+                out = _propose("create_tasks", {"project_id": project_id, "tasks": all_tasks}, batch=batch)
+            res = json.loads(out)
+            if res.get("ok") and held:
+                for pid, e in held:
+                    _supersede(pid, e, res["pending_id"])
+                res["observacao"] = (
+                    f"As prévias de criação anteriores foram juntadas a esta: agora há UMA única prévia na DM com "
+                    f"todas as {len(all_tasks)} tarefas (as anteriores foram apagadas). Diga ao usuário que basta um "
+                    "✅ nessa prévia; não fale em várias prévias e não proponha de novo as tarefas anteriores.")
+                out = json.dumps(res, ensure_ascii=False)
+            return out
+        finally:
+            for _, e in held:
+                e["lock"].release()
+
+
+def criar_tarefa(args: dict, **_kw) -> str:
+    task = {k: v for k, v in _pick(args, _TASK_FIELDS).items() if v is not None}
+    return _propose_create(_str(args, "project_id"), [task])
 
 
 def criar_tarefas_lote(args: dict, **_kw) -> str:
@@ -686,7 +765,7 @@ def criar_tarefas_lote(args: dict, **_kw) -> str:
     for item in tarefas:
         picked = _pick(item, _TASK_FIELDS) if isinstance(item, dict) else {}
         tasks.append({k: v for k, v in picked.items() if v is not None})
-    return _propose("create_tasks", {"project_id": _str(args, "project_id"), "tasks": tasks})
+    return _propose_create(_str(args, "project_id"), tasks)
 
 
 def atualizar_tarefa(args: dict, **_kw) -> str:
