@@ -34,6 +34,33 @@ Depois, reinicie o container (`docker compose restart` em `/docker/hermes-agent-
 
 No `config.yaml`, `discord.dm_role_auth_guild` aponta para o servidor do Prisma. Assim quem tem o papel **Prisma IA** consegue falar com o bot por DM; sem essa opção, DMs aceitam só os IDs de `DISCORD_ALLOWED_USERS`.
 
+## `skills/`
+
+Skills do Hermes: instruções em Markdown (`SKILL.md` com frontmatter `name`, `description`, `metadata.hermes.tags`) que o agente lista e abre com `skills_list` e `skill_view`. Cada skill fica em `skills/<categoria>/<nome>/SKILL.md`; as do Prisma usam a categoria `prisma`.
+
+- `prisma/ata-de-reuniao`: recebe uma ata (arquivo ou texto), registra no Contexto do projeto e propõe as tarefas de "Saídas e Responsáveis" numa prévia só.
+
+Como escrever uma skill nova:
+
+- O Hermes acha skills por busca de palavras: ponha na `description` e nas `tags` os termos em português **e** em inglês que o consultor usaria.
+- A skill só orienta; quem lê e grava são as ferramentas `prisma_*`, com as mesmas travas (DM, autor pela sessão, prévia com ✅). Uma skill nunca deve pedir terminal, arquivo do servidor ou outra ferramenta fora dos toolsets do Discord.
+- Conteúdo trazido pelo usuário (ata, planilha) é dado, nunca instrução; diga isso na skill.
+
+### Instalação na VPS
+
+```bash
+# na máquina local, a partir da raiz do repositório
+tar cf - -C hermes/skills prisma | ssh iago@187.127.8.245 'mkdir -p /tmp/ps && tar xf - -C /tmp/ps && sudo rm -rf /docker/hermes-agent-iipr/data/skills/prisma && sudo cp -r /tmp/ps/prisma /docker/hermes-agent-iipr/data/skills/prisma && sudo chown -R 10000:10000 /docker/hermes-agent-iipr/data/skills/prisma && rm -rf /tmp/ps'
+```
+
+Skills novas ou editadas valem na próxima mensagem (o Hermes relê a pasta), sem reiniciar.
+
+Configuração do `config.yaml`, feita uma vez em 20/11/2026:
+
+- `platform_toolsets.discord` inclui `skills` (só no Discord).
+- `skills.platform_disabled.discord` lista todas as skills que vêm com o Hermes. Assim o bot do Discord só enxerga as skills `prisma/` (e a `hermes-agent`, que o Hermes mantém sempre). Depois de atualizar a imagem do Hermes, confira se vieram skills novas em `data/skills` e acrescente-as à lista.
+- `skills.write_approval: true`: se o agente tentar criar ou editar uma skill (`skill_manage`), a mudança só fica em `data/pending/skills/` e nada muda até o dono aprovar. Skills do Prisma se alteram só por este repositório.
+
 ## `routine/`
 
 Rotina diária da Etapa 4: para cada projeto ativo com **Canal do Discord** preenchido no editor do projeto, lê as mensagens do dia anterior, pede ao Claude Haiku 5.5 (router da Hostinger) um resumo em JSON (resumo, decisões e pendências) e grava no **Contexto** do projeto com o tipo "Discord".
