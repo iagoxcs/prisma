@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useId, type ReactNode } from "react";
+import { ChevronDown } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import { getSupabase } from "@/lib/supabase/client";
 import { useQuery } from "@/lib/use-query";
@@ -13,6 +15,7 @@ import { SkeletonList } from "@/components/ui/skeleton";
 import { shortDate } from "@/lib/format";
 import { OVERDUE_BADGE } from "@/lib/theme/status";
 import { cn } from "@/lib/utils";
+import { useStoredFlag } from "@/lib/use-stored-flag";
 
 type MyTask = Pick<Task, "id" | "project_id" | "title" | "due_date"> & { projects: { name: string } | null };
 
@@ -56,6 +59,36 @@ function Kpi({ label, value, loading, error, warn }: { label: string; value: num
         )}
       </dd>
     </div>
+  );
+}
+
+// Seção recolhível do painel: o título é o botão; a escolha fica guardada no navegador.
+function Section({ id, title, count, children }: { id: string; title: string; count?: number | null; children: ReactNode }) {
+  const [closed, setClosed] = useStoredFlag(`prisma.painel.${id}.recolhida`);
+  const bodyId = useId();
+  return (
+    <section className="space-y-4">
+      <h2>
+        <button
+          type="button"
+          aria-expanded={!closed}
+          aria-controls={bodyId}
+          onClick={() => setClosed(!closed)}
+          className="-mx-2 flex min-h-11 items-center gap-2 rounded-md px-2 text-left transition-colors hover:bg-muted/50"
+        >
+          <ChevronDown
+            className={cn("size-5 shrink-0 text-muted-foreground transition-transform duration-200 motion-reduce:transition-none", closed && "-rotate-90")}
+            strokeWidth={1.75}
+            aria-hidden
+          />
+          {title}
+          {closed && count != null && <span className="num text-base font-normal text-muted-foreground">({count})</span>}
+        </button>
+      </h2>
+      <div id={bodyId} hidden={closed} className="space-y-4">
+        {children}
+      </div>
+    </section>
   );
 }
 
@@ -132,8 +165,7 @@ export default function DashboardPage() {
         <ErrorState what="a contagem de projetos" detail={projects.error} onRetry={projects.reload} />
       )}
 
-      <section className="space-y-4">
-        <h2>Minhas Tarefas - Projetos</h2>
+      <Section id="projetos" title="Minhas Tarefas - Projetos" count={tasks.loading || tasks.error ? null : rows.length}>
         {tasks.loading ? (
           <SkeletonList variant="card" count={2} label="Carregando suas tarefas…" />
         ) : tasks.error ? (
@@ -186,10 +218,9 @@ export default function DashboardPage() {
             ))}
           </>
         )}
-      </section>
+      </Section>
 
-      <section className="space-y-4">
-        <h2>Minhas Tarefas</h2>
+      <Section id="pessoais" title="Minhas Tarefas" count={personal.data ? personal.data.filter((t) => t.status !== "done").length : null}>
         {personal.loading ? (
           <SkeletonList variant="card" count={2} label="Carregando suas tarefas pessoais…" />
         ) : personal.error ? (
@@ -197,7 +228,7 @@ export default function DashboardPage() {
         ) : (
           <PersonalKanban tasks={personal.data ?? []} onChanged={personal.reload} />
         )}
-      </section>
+      </Section>
     </div>
   );
 }
