@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from "react";
 import { useAuth } from "@/components/auth-provider";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getSupabase } from "@/lib/supabase/client";
@@ -50,6 +51,8 @@ export function UsersTab() {
   const [showCreate, setShowCreate] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [removing, setRemoving] = useState<Profile | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const info = new Map((auth.data ?? []).map((a) => [a.id, a]));
   const q = search.trim().toLowerCase();
@@ -81,6 +84,23 @@ export function UsersTab() {
     } catch (err) {
       setMsg({ ok: false, text: (err as Error).message });
     }
+  }
+
+  // Exclusão definitiva pela Edge Function (só admin; ela recusa a própria conta e o último admin ativo).
+  async function remove() {
+    if (!removing) return;
+    const u = removing;
+    setBusy(true);
+    setMsg(null);
+    try {
+      await callAdmin({ action: "delete", user_id: u.id });
+      setMsg({ ok: true, text: `Usuário ${u.name} excluído.` });
+      reloadAll();
+    } catch (err) {
+      setMsg({ ok: false, text: (err as Error).message });
+    }
+    setBusy(false);
+    setRemoving(null);
   }
 
   return (
@@ -139,6 +159,11 @@ export function UsersTab() {
                   </Button>
                   <Button size="sm" variant="ghost" onClick={() => setEditing(editing === u.id ? null : u.id)}>Editar</Button>
                   <Button size="sm" variant="ghost" onClick={() => resetPassword(u)}>Redefinir senha</Button>
+                  {!self && (
+                    <Button size="sm" variant="ghost" className="hover:text-destructive" onClick={() => setRemoving(u)}>
+                      Excluir
+                    </Button>
+                  )}
                 </span>
               </div>
               {editing === u.id && (
@@ -160,8 +185,22 @@ export function UsersTab() {
         {list.length === 0 && !users.loading && <li className="text-sm text-muted-foreground">Nenhum usuário encontrado.</li>}
       </ul>
       <p className="text-[0.8125rem] text-muted-foreground">
-        Usuários não são excluídos: desative para bloquear o acesso e preservar o histórico. O sistema sempre mantém ao menos um administrador ativo.
+        Para só bloquear o acesso, prefira desativar: o histórico fica com o nome da pessoa. Excluir apaga a conta de vez. O sistema sempre mantém ao menos um administrador ativo.
       </p>
+      <ConfirmDialog
+        open={!!removing}
+        title="Excluir usuário?"
+        description={
+          removing
+            ? `A conta de ${removing.name} será apagada e não dá para desfazer. Tarefas atribuídas a essa conta ficam sem responsável; comentários e anexos ficam sem autor. Para só bloquear o acesso, use Desativar.`
+            : undefined
+        }
+        confirmLabel={busy ? "Excluindo…" : "Excluir usuário"}
+        destructive
+        busy={busy}
+        onConfirm={remove}
+        onCancel={() => setRemoving(null)}
+      />
     </div>
   );
 }
