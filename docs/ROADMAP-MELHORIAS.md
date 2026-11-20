@@ -35,6 +35,8 @@ Legenda: ✅ feito · 🟡 parcial · ⬜ pendente · ⛔ aguarda decisão (seç
 | 25 | 5 | P4 | Excluir usuário (função) | admin-users ganha a ação delete; recusa o próprio usuário e o último admin ativo | — | ✅ | #69 |
 | 26 | 5 | P5 | Excluir usuário (front) | Botão Excluir em Configurações > Usuários, com confirmação | P4 | ✅ | #70 |
 | 27 | 5 | P6 | Lista de tarefas pelo Discord numa prévia só | Plugin 0.7.0: prisma_criar_tarefas_lote vale para qualquer lista (texto, planilha, arquivo, ata); duas ou mais tarefas nunca viram prévias separadas | — | ✅ | #71, #72, #74 |
+| 28 | 6 | P7 | Salvamento automático | Detalhes da tarefa (painel), tarefa pessoal (Meu painel) e editor do projeto gravam sozinhos após 1 s de pausa, ao sair do formulário, com Enter e ao fechar; tarefa e projeto enviam só os campos alterados; indicador Salvando…/Salvo/erro; título vazio ou dado inválido não grava e, ao fechar, pede para descartar | — | ✅ | |
+| 29 | 6 | P8 | Cliente na edição do projeto | Editar projeto ganha o campo Cliente (ativos, mais o atual se inativo); quem tem clients.manage cria um cliente novo ali mesmo e já o vincula | — | ✅ | |
 
 ## 2. Reprovados (não implementar)
 
@@ -51,6 +53,7 @@ F1 Saúde do projeto · F4 Encerramento com lições aprendidas · F6 Briefing s
 | 17/11/2026 | O4 | Notificação + e-mail quinzenal ao gerente do projeto |
 | 17/11/2026 | Homologação | MCP com execute_sql só para dados de teste na hml, sem DDL; e-mail de prazo desligado na hml |
 | 19/11/2026 | Onda 5 (pedido de Iago) | Cancelada não conta como aberta nem no total dos indicadores; aparece só em Lista > Canceladas. Exclusão de projeto, cliente e usuário só para admin; usuário não exclui a si mesmo nem o último admin ativo |
+| 20/11/2026 | Onda 6 (pedido de Iago) | Formulários de tarefa e de projeto sem botão Salvar: salvamento automático. Cliente pode ser incluído ou trocado depois de criado o projeto |
 
 ## 4. Decisões pendentes
 

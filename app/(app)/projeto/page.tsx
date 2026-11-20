@@ -22,9 +22,11 @@ import { shortDate } from "@/lib/format";
 import { getSupabase } from "@/lib/supabase/client";
 import { categoryColor, OVERDUE_BADGE, PROJECT_STATUS_COLOR, TASK_STATUS_COLOR } from "@/lib/theme/status";
 import { MSG_ERROR, SEGMENTED, SEGMENT_ITEM, SELECT_CLASS } from "@/lib/ui";
+import { useAutosave } from "@/lib/use-autosave";
 import { useQuery } from "@/lib/use-query";
+import { SaveStatus } from "@/components/ui/save-status";
 import { cn } from "@/lib/utils";
-import { isOpenTask, PROJECT_STATUS_LABEL, todayISO, type Category, type Person, type Project, type ProjectStatus, type Task } from "@/types/domain";
+import { isOpenTask, PROJECT_STATUS_LABEL, todayISO, type Category, type Client, type Person, type Project, type ProjectStatus, type Task } from "@/types/domain";
 import { Select } from "@/components/ui/select";
 
 type Tab = "quadro" | "lista" | "cronograma" | "documentos" | "contexto" | "membros" | "escopos";
@@ -192,7 +194,7 @@ function ProjetoDetalhe() {
       {/* Recolhido com hidden (sem desmontar): fechar e reabrir mantém o que está sendo editado. */}
       {isManager && (
         <div id="project-editor" hidden={!editing}>
-          <ProjectEditor key={p.id + p.status + p.start_date + p.end_date + p.discord_channel_id} project={p} onSaved={project.reload} />
+          <ProjectEditor key={p.id} project={p} onSaved={project.reload} />
         </div>
       )}
 
@@ -368,68 +370,179 @@ function ProjectSkeleton() {
   );
 }
 
-// Status e período do projeto (alimentam o cronograma de portfólio) e canal do Discord (rotina diária).
-function ProjectEditor({ project, onSaved }: { project: Project; onSaved: () => void }) {
-  const [status, setStatus] = useState<ProjectStatus>(project.status);
-  const [start, setStart] = useState(project.start_date ?? "");
-  const [end, setEnd] = useState(project.end_date ?? "");
-  const [channel, setChannel] = useState(project.discord_channel_id ?? "");
-  const [error, setError] = useState<string | null>(null);
+// Cliente, status e período do projeto (alimentam o cronograma de portfólio) e canal do Discord (rotina diária).
+// Salvamento automático: cada alteração é gravada após uma pausa, sem botão de salvar.
+type ProjectForm = { client_id: string; status: ProjectStatus; start: string; end: string; channel: string };
+const NEW_CLIENT = "__novo__";
+const CHANNEL_RE = /^[0-9]{17,20}$/;
 
-  async function save(e: FormEvent) {
-    e.preventDefault();
-    setError(null);
-    const { error } = await getSupabase()
-      .from("projects")
-      .update({ status, start_date: start || null, end_date: end || null, discord_channel_id: channel.trim() || null })
-      .eq("id", project.id);
-    if (error) {
-      if (error.code === "23505") return setError("Este canal já está vinculado a outro projeto.");
-      if (error.code === "23514" && error.message.includes("discord_channel_id")) {
-        return setError("Informe só os números do ID do canal.");
-      }
-      return setError(error.code === "23514" ? "O fim não pode ser anterior ao início." : error.message);
-    }
-    onSaved();
+function projectFormError(f: ProjectForm): string | null {
+  const channel = f.channel.trim();
+  if (channel && !CHANNEL_RE.test(channel)) return "Informe só os números do ID do canal (17 a 20 dígitos) para salvar.";
+  if (f.start && f.end && f.end < f.start) return "O fim não pode ser anterior ao início.";
+  return null;
+}
+
+function ProjectEditor({ project, onSaved }: { project: Project; onSaved: () => void }) {
+  const { can } = useAuth();
+  const canManageClients = can("clients.manage");
+  const [form, setForm] = useState<ProjectForm>(() => ({
+    client_id: project.client_id ?? "",
+    status: project.status,
+    start: project.start_date ?? "",
+    end: project.end_date ?? "",
+    channel: project.discord_channel_id ?? "",
+  }));
+  const [choosingNew, setChoosingNew] = useState(false);
+  const [newClient, setNewClient] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [clientError, setClientError] = useState<string | null>(null);
+  const set = <K extends keyof ProjectForm>(k: K, v: ProjectForm[K]) => setForm((f) => ({ ...f, [k]: v }));
+
+  // Clientes ativos, mais o atual mesmo se inativo (para não sumir da lista).
+  const clients = useQuery<Client[]>(
+    () => getSupabase().from("clients").select("id, name, status").order("name"),
+    [],
+  );
+  const clientOptions = (clients.data ?? []).filter((c) => c.status === "ativo" || c.id === form.client_id);
+  // Sem permissão de ver clientes, a lista vem vazia: o cliente atual continua visível pelo nome do projeto.
+  if (project.client_id && project.clients?.name && !clientOptions.some((c) => c.id === project.client_id)) {
+    clientOptions.unshift({ id: project.client_id, name: project.clients.name, status: "ativo" } as Client);
   }
 
+  const autosave = useAutosave(form, {
+    valid: (f) => projectFormError(f) === null,
+    save: async (f, prev) => {
+      const payload = {
+        client_id: f.client_id || null,
+        status: f.status,
+        start_date: f.start || null,
+        end_date: f.end || null,
+        discord_channel_id: f.channel.trim() || null,
+      };
+      const before = {
+        client_id: prev.client_id || null,
+        status: prev.status,
+        start_date: prev.start || null,
+        end_date: prev.end || null,
+        discord_channel_id: prev.channel.trim() || null,
+      };
+      const changes = Object.fromEntries(Object.entries(payload).filter(([k, v]) => v !== before[k as keyof typeof before]));
+      if (Object.keys(changes).length === 0) return null;
+      const { error } = await getSupabase().from("projects").update(changes).eq("id", project.id).select("id").single();
+      if (error) {
+        if (error.code === "PGRST116") return "sem permissão para editar este projeto.";
+        if (error.code === "23505") return "este canal já está vinculado a outro projeto.";
+        if (error.code === "23514" && error.message.includes("discord_channel_id")) return "informe só os números do ID do canal.";
+        if (error.code === "23514") return "o fim não pode ser anterior ao início.";
+        if (error.code === "23503") return "o cliente escolhido não existe mais.";
+        return error.message;
+      }
+      onSaved();
+      return null;
+    },
+  });
+
+  async function createClient(e: FormEvent) {
+    e.preventDefault();
+    const name = newClient.trim();
+    if (!name) return;
+    setCreating(true);
+    setClientError(null);
+    const { data, error } = await getSupabase().from("clients").insert({ name }).select("id").single();
+    setCreating(false);
+    if (error) return setClientError(error.message);
+    clients.reload();
+    set("client_id", data.id as string);
+    setNewClient("");
+    setChoosingNew(false);
+  }
+
+  const invalidText = projectFormError(form) ?? undefined;
+
   return (
-    <form onSubmit={save} className="glass-coluna flex flex-wrap items-end gap-3 p-4 text-sm">
-      <label className="space-y-1.5">
-        <span className="block text-[0.8125rem] font-medium text-muted-foreground">Status</span>
-        <Select className={SELECT_CLASS} value={status} onChange={(e) => setStatus(e.target.value as ProjectStatus)}>
-          {(Object.keys(PROJECT_STATUS_LABEL) as ProjectStatus[]).map((s) => (
-            <option key={s} value={s}>{PROJECT_STATUS_LABEL[s]}</option>
-          ))}
-        </Select>
-      </label>
-      <label className="space-y-1.5">
-        <span className="block text-[0.8125rem] font-medium text-muted-foreground">Início</span>
-        <Input type="date" className="num" value={start} onChange={(e) => setStart(e.target.value)} />
-      </label>
-      <label className="space-y-1.5">
-        <span className="block text-[0.8125rem] font-medium text-muted-foreground">Fim</span>
-        <Input type="date" className="num" value={end} onChange={(e) => setEnd(e.target.value)} />
-      </label>
-      <label className="space-y-1.5">
-        <span className="block text-[0.8125rem] font-medium text-muted-foreground">Canal do Discord</span>
-        <Input
-          className="num w-56"
-          inputMode="numeric"
-          pattern="[0-9]{17,20}"
-          maxLength={20}
-          title="Informe só os números do ID do canal."
-          aria-describedby="project-discord-help"
-          value={channel}
-          onChange={(e) => setChannel(e.target.value)}
-        />
-      </label>
-      <Button type="submit" variant="outline">Salvar projeto</Button>
-      <p id="project-discord-help" className="w-full text-[0.8125rem] text-muted-foreground">
+    <div className="glass-coluna space-y-3 p-4 text-sm">
+      {/* Enter num campo grava na hora; o salvamento automático cuida do resto. */}
+      <form
+        className="flex flex-wrap items-end gap-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void autosave.flush();
+        }}
+        onBlur={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) void autosave.flush();
+        }}
+      >
+        <label className="space-y-1.5">
+          <span className="block text-[0.8125rem] font-medium text-muted-foreground">Cliente</span>
+          <Select
+            className={SELECT_CLASS}
+            value={choosingNew ? NEW_CLIENT : form.client_id}
+            onChange={(e) => {
+              if (e.target.value === NEW_CLIENT) return setChoosingNew(true);
+              setChoosingNew(false);
+              set("client_id", e.target.value);
+            }}
+          >
+            <option value="">Sem cliente</option>
+            {clientOptions.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.status === "ativo" ? c.name : `${c.name} (inativo)`}
+              </option>
+            ))}
+            {canManageClients && <option value={NEW_CLIENT}>Novo cliente…</option>}
+          </Select>
+        </label>
+        <label className="space-y-1.5">
+          <span className="block text-[0.8125rem] font-medium text-muted-foreground">Status</span>
+          <Select className={SELECT_CLASS} value={form.status} onChange={(e) => set("status", e.target.value as ProjectStatus)}>
+            {(Object.keys(PROJECT_STATUS_LABEL) as ProjectStatus[]).map((s) => (
+              <option key={s} value={s}>{PROJECT_STATUS_LABEL[s]}</option>
+            ))}
+          </Select>
+        </label>
+        <label className="space-y-1.5">
+          <span className="block text-[0.8125rem] font-medium text-muted-foreground">Início</span>
+          <Input type="date" className="num" value={form.start} onChange={(e) => set("start", e.target.value)} />
+        </label>
+        <label className="space-y-1.5">
+          <span className="block text-[0.8125rem] font-medium text-muted-foreground">Fim</span>
+          <Input type="date" className="num" value={form.end} onChange={(e) => set("end", e.target.value)} />
+        </label>
+        <label className="space-y-1.5">
+          <span className="block text-[0.8125rem] font-medium text-muted-foreground">Canal do Discord</span>
+          <Input
+            className="num w-56"
+            inputMode="numeric"
+            maxLength={20}
+            title="Informe só os números do ID do canal."
+            aria-describedby="project-discord-help"
+            value={form.channel}
+            onChange={(e) => set("channel", e.target.value)}
+          />
+        </label>
+      </form>
+      {choosingNew && (
+        <form onSubmit={createClient} className="flex max-w-md flex-wrap gap-2">
+          <Input
+            autoFocus
+            aria-label="Nome do novo cliente"
+            placeholder="Nome do novo cliente"
+            required
+            className="min-w-48 flex-1"
+            value={newClient}
+            onChange={(e) => setNewClient(e.target.value)}
+          />
+          <Button type="submit" variant="outline" disabled={creating}>{creating ? "Criando…" : "Criar e vincular"}</Button>
+          <Button type="button" variant="ghost" onClick={() => setChoosingNew(false)}>Cancelar</Button>
+        </form>
+      )}
+      {(clientError || clients.error) && <p role="alert" className={MSG_ERROR}>{clientError ?? clients.error}</p>}
+      <p id="project-discord-help" className="text-[0.8125rem] text-muted-foreground">
         ID do canal do projeto no Discord. Usado no resumo diário das conversas.
       </p>
-      {error && <p role="alert" className={cn("w-full", MSG_ERROR)}>{error}</p>}
-    </form>
+      <SaveStatus state={autosave.state} error={autosave.error} invalidText={invalidText} />
+    </div>
   );
 }
 
