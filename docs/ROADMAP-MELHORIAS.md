@@ -1,4 +1,4 @@
-# Prisma — Roadmap de melhorias
+# Prisma — Roadmap de #66 #67 #68 #69 #70 #71 ||||||melhorias
 
 Backlog validado por Iago em 17/11/2026. Este arquivo é a fonte da verdade do andamento: o Claude Code o atualiza a cada PR (protocolo na seção 5).
 
