@@ -1,4 +1,4 @@
-# Prisma — Roadmap de melhorias
+# Prisma — Roadmap de #66 #67 #68 #69 #70 #71 ||||||melhorias
 
 Backlog validado por Iago em 17/11/2026. Este arquivo é a fonte da verdade do andamento: o Claude Code o atualiza a cada PR (protocolo na seção 5).
 
@@ -29,12 +29,12 @@ Legenda: ✅ feito · 🟡 parcial · ⬜ pendente · ⛔ aguarda decisão (seç
 | 19 | 4 | O6 | Arrastar barras do Gantt | Mover e redimensionar barras altera start_date e due_date, respeitando RLS | — | ⬜ | |
 | 20 | 4 | I6 | Estados vazios que orientam | Contexto vazio → "Importar ata"; Conhecimento vazio → "Publicar metodologia" | — | ⬜ | |
 | 21 | 4 | E6 | Arquivar projetos concluídos | Arquivados fora das listas, do Realtime e da rotina diária, com filtro "Mostrar arquivados" | — | ⬜ | |
-| 22 | 5 | P1 | Login, Meu painel, menu e exclusões | Login sem passar por "Acesso pendente" (sessão e perfil trocam juntos; falha ao ler o perfil mostra erro com nova tentativa); seções do Meu painel recolhíveis; menu lateral recolhível (só ícones); admin exclui projeto (digitando o nome; anexos saem do Storage) e cliente (bloqueado se houver projetos) | — | ✅ | |
-| 23 | 5 | P2 | Tarefa cancelada (schema) | task_status ganha cancelled; cancelada fica fora de prazos, avisos, e-mails, atraso, lembrete sem prazo e do total dos indicadores | — | ✅ | |
-| 24 | 5 | P3 | Tarefa cancelada (front) | Status "Cancelada" no painel da tarefa; fora do Quadro e do Cronograma; na Lista só pelo filtro "Canceladas" | P2 | ✅ | |
-| 25 | 5 | P4 | Excluir usuário (função) | admin-users ganha a ação delete; recusa o próprio usuário e o último admin ativo | — | ✅ | |
-| 26 | 5 | P5 | Excluir usuário (front) | Botão Excluir em Configurações > Usuários, com confirmação | P4 | ✅ | |
-| 27 | 5 | P6 | Lista de tarefas pelo Discord numa prévia só | Plugin 0.7.0: prisma_criar_tarefas_lote vale para qualquer lista (texto, planilha, arquivo, ata); duas ou mais tarefas nunca viram prévias separadas | — | ⬜ | |
+| 22 | 5 | P1 | Login, Meu painel, menu e exclusões | Login sem passar por "Acesso pendente" (sessão e perfil trocam juntos; falha ao ler o perfil mostra erro com nova tentativa); seções do Meu painel recolhíveis; menu lateral recolhível (só ícones); admin exclui projeto (digitando o nome; anexos saem do Storage) e cliente (bloqueado se houver projetos) | — | ✅ | #66 |
+| 23 | 5 | P2 | Tarefa cancelada (schema) | task_status ganha cancelled; cancelada fica fora de prazos, avisos, e-mails, atraso, lembrete sem prazo e do total dos indicadores | — | ✅ | #67 |
+| 24 | 5 | P3 | Tarefa cancelada (front) | Status "Cancelada" no painel da tarefa; fora do Quadro e do Cronograma; na Lista só pelo filtro "Canceladas" | P2 | ✅ | #68 |
+| 25 | 5 | P4 | Excluir usuário (função) | admin-users ganha a ação delete; recusa o próprio usuário e o último admin ativo | — | ✅ | #69 |
+| 26 | 5 | P5 | Excluir usuário (front) | Botão Excluir em Configurações > Usuários, com confirmação | P4 | ✅ | #70 |
+| 27 | 5 | P6 | Lista de tarefas pelo Discord numa prévia só | Plugin 0.7.0: prisma_criar_tarefas_lote vale para qualquer lista (texto, planilha, arquivo, ata); duas ou mais tarefas nunca viram prévias separadas | — | 🟡 (código pronto; falta instalar o 0.7.0 na VPS e validar no Discord) | #71 |
 
 ## 2. Reprovados (não implementar)
 
