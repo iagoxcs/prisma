@@ -29,6 +29,12 @@ Legenda: ✅ feito · 🟡 parcial · ⬜ pendente · ⛔ aguarda decisão (seç
 | 19 | 4 | O6 | Arrastar barras do Gantt | Mover e redimensionar barras altera start_date e due_date, respeitando RLS | — | ⬜ | |
 | 20 | 4 | I6 | Estados vazios que orientam | Contexto vazio → "Importar ata"; Conhecimento vazio → "Publicar metodologia" | — | ⬜ | |
 | 21 | 4 | E6 | Arquivar projetos concluídos | Arquivados fora das listas, do Realtime e da rotina diária, com filtro "Mostrar arquivados" | — | ⬜ | |
+| 22 | 5 | P1 | Login, Meu painel, menu e exclusões | Login sem passar por "Acesso pendente" (sessão e perfil trocam juntos; falha ao ler o perfil mostra erro com nova tentativa); seções do Meu painel recolhíveis; menu lateral recolhível (só ícones); admin exclui projeto (digitando o nome; anexos saem do Storage) e cliente (bloqueado se houver projetos) | — | ✅ | |
+| 23 | 5 | P2 | Tarefa cancelada (schema) | task_status ganha cancelled; cancelada fica fora de prazos, avisos, e-mails, atraso, lembrete sem prazo e do total dos indicadores | — | ⬜ | |
+| 24 | 5 | P3 | Tarefa cancelada (front) | Status "Cancelada" no painel da tarefa; fora do Quadro e do Cronograma; na Lista só pelo filtro "Canceladas" | P2 | ⬜ | |
+| 25 | 5 | P4 | Excluir usuário (função) | admin-users ganha a ação delete; recusa o próprio usuário e o último admin ativo | — | ⬜ | |
+| 26 | 5 | P5 | Excluir usuário (front) | Botão Excluir em Configurações > Usuários, com confirmação | P4 | ⬜ | |
+| 27 | 5 | P6 | Lista de tarefas pelo Discord numa prévia só | Plugin 0.7.0: prisma_criar_tarefas_lote vale para qualquer lista (texto, planilha, arquivo, ata); duas ou mais tarefas nunca viram prévias separadas | — | ⬜ | |
 
 ## 2. Reprovados (não implementar)
 
@@ -44,6 +50,7 @@ F1 Saúde do projeto · F4 Encerramento com lições aprendidas · F6 Briefing s
 | 17/11/2026 | Externos | Só o admin cria a conta; gerente inclui externo já cadastrado; externo altera só o status das atribuídas e marca itens existentes do checklist; compartilhadas só leitura |
 | 17/11/2026 | O4 | Notificação + e-mail quinzenal ao gerente do projeto |
 | 17/11/2026 | Homologação | MCP com execute_sql só para dados de teste na hml, sem DDL; e-mail de prazo desligado na hml |
+| 19/11/2026 | Onda 5 (pedido de Iago) | Cancelada não conta como aberta nem no total dos indicadores; aparece só em Lista > Canceladas. Exclusão de projeto, cliente e usuário só para admin; usuário não exclui a si mesmo nem o último admin ativo |
 
 ## 4. Decisões pendentes
 

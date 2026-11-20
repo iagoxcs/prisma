@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { DIALOG, OVERLAY, restoreFocus, trapFocus } from "@/lib/ui";
@@ -15,6 +15,8 @@ export function ConfirmDialog({
   cancelLabel = "Cancelar",
   destructive = false,
   busy = false,
+  confirmDisabled = false,
+  children,
   onConfirm,
   onCancel,
 }: {
@@ -25,6 +27,10 @@ export function ConfirmDialog({
   cancelLabel?: string;
   destructive?: boolean;
   busy?: boolean;
+  /** Mantém o botão de confirmar desligado (ex.: até digitar o nome do que será excluído). */
+  confirmDisabled?: boolean;
+  /** Conteúdo extra entre o texto e os botões (ex.: campo de confirmação). */
+  children?: ReactNode;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
@@ -67,9 +73,10 @@ export function ConfirmDialog({
           <h2 id={titleId} className="text-[1.0625rem] font-semibold">{title}</h2>
           {description && <p id={descId} className="text-sm text-muted-foreground">{description}</p>}
         </div>
+        {children}
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button type="button" variant="outline" data-cancel="" disabled={busy} onClick={onCancel}>{cancelLabel}</Button>
-          <Button type="button" variant={destructive ? "destructive" : "default"} disabled={busy} onClick={onConfirm}>{confirmLabel}</Button>
+          <Button type="button" variant={destructive ? "destructive" : "default"} disabled={busy || confirmDisabled} onClick={onConfirm}>{confirmLabel}</Button>
         </div>
       </div>
     </div>,

@@ -12,8 +12,9 @@ import { Kanban } from "@/components/project/kanban";
 import { MembersPanel } from "@/components/project/members-panel";
 import { TaskList } from "@/components/project/task-list";
 import { TaskPanel } from "@/components/project/task-panel";
-import { ArrowLeft, ChevronDown } from "lucide-react";
+import { ArrowLeft, ChevronDown, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ErrorState } from "@/components/ui/error-state";
 import { Input } from "@/components/ui/input";
 import { Skeleton, SkeletonList } from "@/components/ui/skeleton";
@@ -177,10 +178,13 @@ function ProjetoDetalhe() {
           </div>
         </div>
         {isManager && (
-          <Button type="button" variant="outline" aria-expanded={editing} aria-controls="project-editor" onClick={() => setEditing((v) => !v)}>
-            Editar projeto
-            <ChevronDown strokeWidth={1.75} aria-hidden className={cn("transition-transform duration-150 motion-reduce:transition-none", editing && "rotate-180")} />
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            {profile.role === "admin" && <DeleteProjectButton project={p} onDeleted={() => router.replace("/projetos/")} />}
+            <Button type="button" variant="outline" aria-expanded={editing} aria-controls="project-editor" onClick={() => setEditing((v) => !v)}>
+              Editar projeto
+              <ChevronDown strokeWidth={1.75} aria-hidden className={cn("transition-transform duration-150 motion-reduce:transition-none", editing && "rotate-180")} />
+            </Button>
+          </div>
         )}
       </div>
       {/* Recolhido com hidden (sem desmontar): fechar e reabrir mantém o que está sendo editado. */}
@@ -261,6 +265,72 @@ function ProjetoDetalhe() {
         />
       )}
     </div>
+  );
+}
+
+const BUCKET = "task-attachments";
+
+// Exclusão definitiva do projeto (só admin; o RLS de projects também exige is_admin()).
+// O banco apaga em cascata tarefas, membros, escopos, contexto e comentários; os arquivos dos anexos
+// ficam no Storage, então saem antes, para não sobrar arquivo órfão.
+function DeleteProjectButton({ project, onDeleted }: { project: Project; onDeleted: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [typed, setTyped] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function close() {
+    setOpen(false);
+    setTyped("");
+    setError(null);
+  }
+
+  async function remove() {
+    setBusy(true);
+    setError(null);
+    const supabase = getSupabase();
+    const files = await supabase.from("task_attachments").select("storage_path, tasks!inner(project_id)").eq("tasks.project_id", project.id);
+    if (files.error) {
+      setBusy(false);
+      return setError(files.error.message);
+    }
+    const paths = (files.data ?? []).map((f) => f.storage_path as string);
+    for (let i = 0; i < paths.length; i += 100) {
+      // Falha aqui não impede a exclusão: o pior caso é um arquivo órfão no bucket privado.
+      await supabase.storage.from(BUCKET).remove(paths.slice(i, i + 100));
+    }
+    const { error } = await supabase.from("projects").delete().eq("id", project.id).select("id").single();
+    setBusy(false);
+    if (error) return setError(error.code === "PGRST116" ? "Sem permissão para excluir este projeto." : error.message);
+    close();
+    onDeleted();
+  }
+
+  return (
+    <>
+      <Button type="button" variant="outline" onClick={() => setOpen(true)}>
+        <Trash2 strokeWidth={1.75} aria-hidden /> Excluir projeto
+      </Button>
+      <ConfirmDialog
+        open={open}
+        title="Excluir projeto?"
+        description={`Apaga "${project.name}" com todas as tarefas, anexos, comentários, escopos e contexto. Não dá para desfazer. Para encerrar sem apagar, mude o status para Concluído ou Cancelado.`}
+        confirmLabel={busy ? "Excluindo…" : "Excluir projeto"}
+        destructive
+        busy={busy}
+        confirmDisabled={typed.trim() !== project.name.trim()}
+        onConfirm={remove}
+        onCancel={close}
+      >
+        <div className="space-y-1.5">
+          <label htmlFor="confirmar-exclusao" className="block text-sm">
+            Digite o nome do projeto para confirmar
+          </label>
+          <Input id="confirmar-exclusao" autoComplete="off" value={typed} onChange={(e) => setTyped(e.target.value)} />
+          {error && <p role="alert" className={MSG_ERROR}>{error}</p>}
+        </div>
+      </ConfirmDialog>
+    </>
   );
 }
 
