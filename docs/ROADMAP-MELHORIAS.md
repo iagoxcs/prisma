@@ -37,6 +37,7 @@ Legenda: ✅ feito · 🟡 parcial · ⬜ pendente · ⛔ aguarda decisão (seç
 | 27 | 5 | P6 | Lista de tarefas pelo Discord numa prévia só | Plugin 0.7.0: prisma_criar_tarefas_lote vale para qualquer lista (texto, planilha, arquivo, ata); duas ou mais tarefas nunca viram prévias separadas | — | ✅ | #71, #72, #74 |
 | 28 | 6 | P7 | Salvamento automático | Detalhes da tarefa (painel), tarefa pessoal (Meu painel) e editor do projeto gravam sozinhos após 1 s de pausa, ao sair do formulário, com Enter e ao fechar; tarefa e projeto enviam só os campos alterados; indicador Salvando…/Salvo/erro; título vazio ou dado inválido não grava e, ao fechar, pede para descartar | — | ✅ | |
 | 29 | 6 | P8 | Cliente na edição do projeto | Editar projeto ganha o campo Cliente (ativos, mais o atual se inativo); quem tem clients.manage cria um cliente novo ali mesmo e já o vincula | — | ✅ | |
+| 30 | 6 | P9 | Enquadramento por dispositivo | Nada cortado em celular (375 px), tablet e notebook com janela baixa (≥ 600 px de altura): menu lateral compacta em janela baixa e rola com barra visível; celular com navegação em linha própria e página atual sempre visível (inclusive em /projeto/); abas do projeto quebram linha; Indicadores sem rolagem lateral (tabela sr-only dos gráficos); notificações dentro da tela; diálogos com altura máxima e rolagem | — | ✅ | #78 |
 
 ## 2. Reprovados (não implementar)
 

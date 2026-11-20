@@ -22,8 +22,9 @@ export const MSG_ERROR = "text-sm text-destructive";
 
 // Diálogos e drawers sobrepostos: sólidos (sem blur), sobre um véu do fundo.
 export const OVERLAY = "fixed inset-0 flex bg-background/60";
+// max-h + rolagem: em tela baixa (celular deitado, notebook com zoom) o diálogo não perde os botões.
 export const DIALOG =
-  "w-full max-w-md space-y-5 rounded-2xl border border-glass-edge bg-popover p-6 text-popover-foreground shadow-[var(--glass-shadow)]";
+  "max-h-[calc(100dvh-2rem)] w-full max-w-md space-y-5 overflow-y-auto rounded-2xl border border-glass-edge bg-popover p-6 text-popover-foreground shadow-[var(--glass-shadow)]";
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';

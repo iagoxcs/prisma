@@ -59,7 +59,10 @@ export function ChartFrame({
           <div role="img" aria-label={title}>
             {children}
           </div>
-          <table className="sr-only">
+          {/* A tabela não encolhe abaixo do conteúdo (ignora o width: 1px do sr-only) e alargava a página
+              no celular; o div sr-only em volta respeita a largura e corta o excesso. */}
+          <div className="sr-only">
+          <table>
             <caption>{table.caption}</caption>
             <thead>
               <tr>
@@ -78,6 +81,7 @@ export function ChartFrame({
               ))}
             </tbody>
           </table>
+          </div>
         </>
       )}
     </section>

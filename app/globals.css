@@ -11,6 +11,8 @@
    ========================================================================== */
 
 @custom-variant dark (&:is(.dark *));
+/* Janela baixa (notebook 1366×768 com barras do navegador, tela com zoom): o menu lateral compacta. */
+@custom-variant baixa (@media (max-height: 800px));
 
 @theme inline {
   /* Tipografia (variáveis criadas por next/font em app/layout.tsx) */
