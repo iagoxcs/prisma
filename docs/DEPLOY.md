@@ -152,17 +152,18 @@ O Supabase substituiu as chaves de API `anon` e `service_role` (JWTs assinados p
 |---|---|---|
 | 1 | Site com a chave publishable: secret `NEXT_PUBLIC_SUPABASE_ANON_KEY` do GitHub = `sb_publishable_…` (o nome do secret ficou o antigo) | Feito em 26/10/2026 |
 | 2 | Edge Functions com as chaves novas (`SUPABASE_SECRET_KEYS` e `SUPABASE_PUBLISHABLE_KEYS`, chave `default`), com retorno às legadas se faltarem | Feito em 13/11/2026 |
-| 3 | Desativar as legadas e revogar a HS256 | Após uma semana sem erro |
+| 3a | Funções sem retorno às legadas: só a chave `default`; se faltar, logam `chave de API <tipo>: ausente (motivo)` e falham | Código pronto em 20/11/2026, depois de 7 dias sem log `legada` (o último foi 13/11 às 14:27, durante a troca) |
+| 3b | Desativar as legadas no painel (reversível) | Iago, depois do deploy do 3a |
+| 3c | Revogar a HS256 no painel (irreversível) | Iago, alguns dias depois do 3b sem erro |
 
 Quem depende de chave de API: só as três Edge Functions. O `pg_cron` chama o `deadline-emails` com o cabeçalho `x-cron-secret`; o Hermes e a rotina chamam o `ai-gateway` com `HERMES_GATEWAY_SECRET` e `ROUTINE_SECRET`; o deploy usa a senha do banco e o token da CLI.
 
-**Passo 3, no painel do Supabase**, só depois de uma semana sem erro nos logs das funções:
+**Passos 3b e 3c, no painel do Supabase**, depois do deploy do 3a:
 
-1. Em *Edge Functions → Logs*, conferir em `admin-users`, `ai-gateway` e `deadline-emails` as linhas `chave de API secret: nova` e `chave de API publishable: nova`. Nenhuma pode dizer `legada`.
+1. Em *Edge Functions → Logs*, conferir que nenhuma linha de `admin-users`, `ai-gateway` e `deadline-emails` diz `chave de API … ausente`.
 2. *Settings → API Keys → Legacy API keys*: desativar `anon` e `service_role`. É reversível.
 3. Testar logo em seguida: login no site, *Configurações → Usuários* (usa o `admin-users`), uma consulta ao bot por DM (usa o `ai-gateway`) e, no dia seguinte, o relatório da rotina em `#prisma-operacao` e os e-mails de prazo. Se algo falhar, reativar as legadas e investigar.
 4. Depois de mais alguns dias sem erro: *Settings → JWT Signing Keys → Previously used*, revogar a chave HS256. **Irreversível**: invalida qualquer token assinado por ela, inclusive as chaves legadas.
-5. Opcional: remover das funções o retorno às chaves legadas.
 
 ---
 

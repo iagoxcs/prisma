@@ -632,8 +632,8 @@ function loggable(input: Args): Args {
   return out;
 }
 
-// Chaves de API (migração, passo 2): usa a chave nova "default" quando existe; senão, a legada.
-// Loga só o tipo usado (nova/legada), nunca a chave, para conferir antes de desativar as legadas.
+// Chaves de API (migração, passo 3): só a chave nova "default", sem retorno às legadas.
+// Se faltar, loga o motivo uma vez (nunca a chave) e falha, para o erro aparecer logo.
 const keyLogged = new Set<string>();
 function apiKey(kind: "secret" | "publishable"): string {
   const raw = Deno.env.get(kind === "secret" ? "SUPABASE_SECRET_KEYS" : "SUPABASE_PUBLISHABLE_KEYS");
@@ -647,13 +647,12 @@ function apiKey(kind: "secret" | "publishable"): string {
     key = undefined;
     why = "JSON inválido";
   }
-  const isNew = typeof key === "string" && key !== "";
+  if (typeof key === "string" && key !== "") return key;
   if (!keyLogged.has(kind)) {
     keyLogged.add(kind);
-    console.log(`chave de API ${kind}: ${isNew ? "nova" : `legada (${why})`}`);
+    console.error(`chave de API ${kind}: ausente (${why})`);
   }
-  if (isNew) return key as string;
-  return Deno.env.get(kind === "secret" ? "SUPABASE_SERVICE_ROLE_KEY" : "SUPABASE_ANON_KEY")!;
+  throw new Error(`chave de API ${kind} ausente`);
 }
 
 const serviceClient = () =>

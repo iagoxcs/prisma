@@ -3,8 +3,8 @@
 // Um resumo por pessoa com as notificações due_soon/overdue/missing_due_date ainda não enviadas.
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
-// Chaves de API (migração, passo 2): usa a chave nova "default" quando existe; senão, a legada.
-// Loga só o tipo usado (nova/legada), nunca a chave, para conferir antes de desativar as legadas.
+// Chaves de API (migração, passo 3): só a chave nova "default", sem retorno à legada.
+// Se faltar, loga o motivo uma vez (nunca a chave) e falha, para o erro aparecer logo.
 let keyLogged = false;
 function secretKey(): string {
   const raw = Deno.env.get("SUPABASE_SECRET_KEYS");
@@ -18,12 +18,12 @@ function secretKey(): string {
     key = undefined;
     why = "JSON inválido";
   }
-  const isNew = typeof key === "string" && key !== "";
+  if (typeof key === "string" && key !== "") return key;
   if (!keyLogged) {
     keyLogged = true;
-    console.log(`chave de API secret: ${isNew ? "nova" : `legada (${why})`}`);
+    console.error(`chave de API secret: ausente (${why})`);
   }
-  return isNew ? (key as string) : Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  throw new Error("chave de API secret ausente");
 }
 
 const SITE_URL = "https://prisma.ambienteconsulta.com.br";
