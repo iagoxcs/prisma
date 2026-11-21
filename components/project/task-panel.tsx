@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { Download, Paperclip, X } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
@@ -15,7 +15,9 @@ import { dateTime, shortDate } from "@/lib/format";
 import { getSupabase } from "@/lib/supabase/client";
 import { OVERDUE_BADGE, TASK_STATUS_COLOR } from "@/lib/theme/status";
 import { MSG_ERROR, OVERLAY, SELECT_CLASS as BASE_SELECT, TEXTAREA_CLASS, restoreFocus, trapFocus } from "@/lib/ui";
+import { useAutosave } from "@/lib/use-autosave";
 import { useQuery } from "@/lib/use-query";
+import { SaveStatus } from "@/components/ui/save-status";
 import { cn } from "@/lib/utils";
 import {
   isOpenTask,
@@ -66,8 +68,9 @@ export function TaskPanel({
   onChanged: () => void;
 }) {
   const asideRef = useRef<HTMLElement>(null);
-  const [dirty, setDirty] = useState(false);
+  const saverRef = useRef<SaverHandle | null>(null);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const closing = useRef(false);
   const hasTask = !!task;
 
   // Ao abrir, o foco entra no drawer; ao desmontar, volta para quem o abriu (card do Kanban, barra do Gantt).
@@ -78,8 +81,16 @@ export function TaskPanel({
     return () => restoreFocus(opener);
   }, [hasTask]);
 
-  // Esc, véu e X passam por aqui: com alterações não salvas em Details, pede confirmação antes de descartar.
-  const requestClose = () => (dirty ? setConfirmDiscard(true) : onClose());
+  // Esc, véu e X passam por aqui: grava na hora o que estiver pendente em Details e fecha.
+  // Se não der para gravar (título vazio ou erro), pede confirmação antes de descartar.
+  const requestClose = async () => {
+    if (closing.current) return;
+    closing.current = true;
+    const ok = (await saverRef.current?.flush()) ?? true;
+    closing.current = false;
+    if (ok) onClose();
+    else setConfirmDiscard(true);
+  };
 
   if (!task) return null;
   const overdue = !!task.due_date && isOpenTask(task.status) && task.due_date < todayISO();
@@ -134,7 +145,7 @@ export function TaskPanel({
                 </nav>
               </div>
             </header>
-            <Details key={taskId} task={task} categories={categories} people={people} onChanged={onChanged} onClose={onClose} onDirtyChange={setDirty} />
+            <Details key={taskId} task={task} categories={categories} people={people} onChanged={onChanged} onClose={onClose} saverRef={saverRef} />
             <div id="checklist" className="scroll-mt-28">
               <Checklist taskId={taskId} />
             </div>
@@ -151,11 +162,14 @@ export function TaskPanel({
       <ConfirmDialog
         open={confirmDiscard}
         title="Descartar alterações?"
-        description="As alterações nos detalhes desta tarefa ainda não foram salvas e serão perdidas."
+        description="As últimas alterações nos detalhes desta tarefa não puderam ser salvas (título vazio ou erro ao gravar) e serão perdidas."
         confirmLabel="Descartar"
         cancelLabel="Continuar editando"
         destructive
-        onConfirm={onClose}
+        onConfirm={() => {
+          saverRef.current?.cancel();
+          onClose();
+        }}
         onCancel={() => setConfirmDiscard(false)}
       />
     </>
@@ -175,53 +189,65 @@ function formFromTask(task: Task) {
   };
 }
 
+type TaskForm = ReturnType<typeof formFromTask>;
+
+function taskPayload(f: TaskForm) {
+  return {
+    title: f.title.trim(),
+    description: f.description || null,
+    status: f.status,
+    assignee_id: f.assignee_id || null,
+    client_owner: f.client_owner.trim() || null,
+    category_id: f.category_id || null,
+    start_date: f.start_date || null,
+    due_date: f.due_date || null,
+  };
+}
+
+type SaverHandle = { flush: () => Promise<boolean>; cancel: () => void };
+
 function Details({
   task,
   categories,
   people,
   onChanged,
   onClose,
-  onDirtyChange,
+  saverRef,
 }: {
   task: Task;
   categories: Category[];
   people: Person[];
   onChanged: () => void;
   onClose: () => void;
-  onDirtyChange: (dirty: boolean) => void;
+  saverRef: RefObject<SaverHandle | null>;
 }) {
+  // O formulário nasce da tarefa e não é sobrescrito pelos recarregamentos (Realtime) enquanto está aberto.
   const [form, setForm] = useState(() => formFromTask(task));
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  // Compara com os valores atuais da tarefa: depois de salvar e recarregar, o formulário volta a ficar limpo.
-  const original = formFromTask(task);
-  const dirty = (Object.keys(form) as (keyof typeof form)[]).some((k) => form[k] !== original[k]);
-  useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange]);
-
-  async function save(e: FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setError(null);
-    const { error } = await getSupabase()
-      .from("tasks")
-      .update({
-        title: form.title.trim(),
-        description: form.description || null,
-        status: form.status,
-        assignee_id: form.assignee_id || null,
-        client_owner: form.client_owner.trim() || null,
-        category_id: form.category_id || null,
-        start_date: form.start_date || null,
-        due_date: form.due_date || null,
-      })
-      .eq("id", task.id);
-    setBusy(false);
-    if (error) return setError(error.message);
-    onChanged();
-  }
+  // Salvamento automático: envia só os campos que mudaram desde a última gravação.
+  const autosave = useAutosave(form, {
+    valid: (f) => f.title.trim() !== "",
+    save: async (f, prev) => {
+      const payload = taskPayload(f);
+      const before = taskPayload(prev);
+      const changes = Object.fromEntries(Object.entries(payload).filter(([k, v]) => v !== before[k as keyof typeof before]));
+      if (Object.keys(changes).length === 0) return null;
+      const { error } = await getSupabase().from("tasks").update(changes).eq("id", task.id);
+      if (error) return error.code === "23514" ? "o prazo não pode ser anterior ao início." : error.message;
+      onChanged();
+      return null;
+    },
+  });
+  const { flush, cancel } = autosave;
+  useEffect(() => {
+    saverRef.current = { flush, cancel };
+    return () => {
+      saverRef.current = null;
+    };
+  });
 
   async function remove() {
     setDeleting(true);
@@ -231,14 +257,25 @@ function Details({
       setConfirmDelete(false);
       return setError(error.message);
     }
+    cancel();
     onChanged();
     onClose();
   }
 
   const set = (k: keyof typeof form, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
+  // Enter num campo ou sair do formulário grava na hora, sem esperar a pausa.
   return (
-    <form onSubmit={save} className="space-y-4">
+    <form
+      className="space-y-4"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void flush();
+      }}
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) void flush();
+      }}
+    >
       <Input aria-label="Título" className="h-12 text-lg font-semibold md:text-lg" required value={form.title} onChange={(e) => set("title", e.target.value)} />
       <textarea
         aria-label="Descrição"
@@ -289,8 +326,8 @@ function Details({
         </div>
       </div>
       {error && <p role="alert" className={MSG_ERROR}>{error}</p>}
-      <div className="flex justify-between gap-2">
-        <Button type="submit" disabled={busy}>{busy ? "Salvando…" : "Salvar"}</Button>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <SaveStatus state={autosave.state} error={autosave.error} invalidText="Informe o título para salvar." />
         <Button type="button" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => setConfirmDelete(true)}>Excluir tarefa</Button>
       </div>
       <ConfirmDialog

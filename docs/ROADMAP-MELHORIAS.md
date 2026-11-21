@@ -1,4 +1,4 @@
-# Prisma — Roadmap de #66 #67 #68 #69 #70 #71 ||||||melhorias
+# Prisma — Roadmap de melhorias
 
 Backlog validado por Iago em 17/11/2026. Este arquivo é a fonte da verdade do andamento: o Claude Code o atualiza a cada PR (protocolo na seção 5).
 
@@ -14,9 +14,9 @@ Legenda: ✅ feito · 🟡 parcial · ⬜ pendente · ⛔ aguarda decisão (seç
 | 4 | 1 | A6 | Bloquear troca de projeto da tarefa | Trigger before update of project_id em tasks: sem public.is_admin() → erro 42501 "Não é possível mover a tarefa para outro projeto."; vale também para service_role; verify: consultor responsável recebe 42501, admin consegue, troca de status pelo responsável continua | — | ✅ | #57 |
 | 5 | 1 | E3 | Concluir migração de chaves (DV8) | Passo 2 feito. Passo 3: só após 7 dias sem log de fallback para chave legada nas Edge Functions; remover o fallback de admin-users, deadline-emails e ai-gateway; DEPLOY.md com a revogação (desativar legadas e revogar a HS256 no painel, feito por Iago) | — | 🟡 (código sem retorno às legadas; falta desativar e revogar no painel) | #51, #52, #65 |
 | 6 | 2 | F3 | Ata ou transcrição viram tarefas em lote | Escrita em lote no ai-gateway: até 30 tarefas numa única prévia, confirmada uma vez com ✅; cada tarefa validada como create_task; uma linha em ai_actions_log por tarefa; plugin do Hermes extrai "Saídas e Responsáveis" da ata e propõe o lote | — | ✅ | #58, #59, #60, #61 |
-| 7 | 2 | I1 | Vincular canal do Discord sem digitar o ID | Ver decisão pendente DP1 | DP1 | ⛔ | |
+| 7 | 2 | I1 | Mais de um projeto no mesmo canal do Discord | O ID do canal continua digitado no editor do projeto. Fatias: (a) schema: sai o unique de projects.discord_channel_id e o unique de project_context_entries.source_ref passa a ser por projeto (project_id, source_ref); (b) ai-gateway: gravação do resumo da rotina idempotente por projeto e canal, sem o conflito source_ref_conflict entre projetos do mesmo canal; (c) rotina: lê cada canal uma vez, gera um único resumo e grava o mesmo resumo no Contexto de cada projeto vinculado; o alerta de canal sem projeto continua; (d) front: o editor do projeto aceita um canal já usado por outro projeto e mostra quais projetos dividem o canal | — | 🟡 (b, a) | #80 |
 | 8 | 2 | O3 | Prévias da IA resistentes a reinício | Guardar canal e message_id da prévia em ai_pending_actions; ao iniciar, o plugin retoma a observação das prévias em status proposed ainda não expiradas | — | ✅ | #62, #63, #64 |
-| 9 | 2 | O5 | Telemetria de custo da IA | Ver decisão pendente DP2; total mensal publicado no #prisma-operacao | DP2 | ⛔ | |
+| 9 | 2 | O5 | Telemetria de custo da IA | A rotina consulta o relatório de uso do router de LLM da Hostinger (bot, transcrição e resumo diário) e publica o total do mês no #prisma-operacao. Se o router não tiver API de uso, parar e perguntar antes de seguir | — | ⬜ | |
 | 10 | 2 | O1 | Teste repetível das aprovações de escrita da IA | Script contra a stack local (supabase start + supabase functions serve ai-gateway), porque a hml não tem ai-gateway: código errado 2×, cancelamento na 3ª tentativa, reuso, prévia expirada, usuário diferente → recusados; prévia válida → executada | — | ⬜ | |
 | 11 | 2 | E5 | Deploy do Hermes reproduzível | hermes/deploy/: config.yaml de referência sem segredos + install.sh idempotente (plugin, rotina, timer do systemd) para a VPS atual; hermes/README.md atualizado | — | ⬜ | |
 | 12 | 3 | F2 | One Page e status report | Fatias: (a) reports.task_id; (b) Edge Function de geração em HTML na identidade do Prisma (tokens do tema Lâminas, superfícies sólidas, sem backdrop-filter); (c) aba Relatórios no projeto e na tarefa, com versões e iframe sandbox; (d) generate_report no ai-gateway. Sem bloco de saúde do projeto | — | ⬜ | |
@@ -34,7 +34,10 @@ Legenda: ✅ feito · 🟡 parcial · ⬜ pendente · ⛔ aguarda decisão (seç
 | 24 | 5 | P3 | Tarefa cancelada (front) | Status "Cancelada" no painel da tarefa; fora do Quadro e do Cronograma; na Lista só pelo filtro "Canceladas" | P2 | ✅ | #68 |
 | 25 | 5 | P4 | Excluir usuário (função) | admin-users ganha a ação delete; recusa o próprio usuário e o último admin ativo | — | ✅ | #69 |
 | 26 | 5 | P5 | Excluir usuário (front) | Botão Excluir em Configurações > Usuários, com confirmação | P4 | ✅ | #70 |
-| 27 | 5 | P6 | Lista de tarefas pelo Discord numa prévia só | Plugin 0.7.0: prisma_criar_tarefas_lote vale para qualquer lista (texto, planilha, arquivo, ata); duas ou mais tarefas nunca viram prévias separadas | — | 🟡 (código pronto; falta instalar o 0.7.0 na VPS e validar no Discord) | #71 |
+| 27 | 5 | P6 | Lista de tarefas pelo Discord numa prévia só | Plugin 0.7.0: prisma_criar_tarefas_lote vale para qualquer lista (texto, planilha, arquivo, ata); duas ou mais tarefas nunca viram prévias separadas | — | ✅ | #71, #72, #74 |
+| 28 | 6 | P7 | Salvamento automático | Detalhes da tarefa (painel), tarefa pessoal (Meu painel) e editor do projeto gravam sozinhos após 1 s de pausa, ao sair do formulário, com Enter e ao fechar; tarefa e projeto enviam só os campos alterados; indicador Salvando…/Salvo/erro; título vazio ou dado inválido não grava e, ao fechar, pede para descartar | — | ✅ | #77 |
+| 29 | 6 | P8 | Cliente na edição do projeto | Editar projeto ganha o campo Cliente (ativos, mais o atual se inativo); quem tem clients.manage cria um cliente novo ali mesmo e já o vincula | — | ✅ | #77 |
+| 30 | 6 | P9 | Enquadramento por dispositivo | Nada cortado em celular (375 px), tablet e notebook com janela baixa (≥ 600 px de altura): menu lateral compacta em janela baixa e rola com barra visível; celular com navegação em linha própria e página atual sempre visível (inclusive em /projeto/); abas do projeto quebram linha; Indicadores sem rolagem lateral (tabela sr-only dos gráficos); notificações dentro da tela; diálogos com altura máxima e rolagem | — | ✅ | #78 |
 
 ## 2. Reprovados (não implementar)
 
@@ -51,13 +54,13 @@ F1 Saúde do projeto · F4 Encerramento com lições aprendidas · F6 Briefing s
 | 17/11/2026 | O4 | Notificação + e-mail quinzenal ao gerente do projeto |
 | 17/11/2026 | Homologação | MCP com execute_sql só para dados de teste na hml, sem DDL; e-mail de prazo desligado na hml |
 | 19/11/2026 | Onda 5 (pedido de Iago) | Cancelada não conta como aberta nem no total dos indicadores; aparece só em Lista > Canceladas. Exclusão de projeto, cliente e usuário só para admin; usuário não exclui a si mesmo nem o último admin ativo |
+| 20/11/2026 | Onda 6 (pedido de Iago) | Formulários de tarefa e de projeto sem botão Salvar: salvamento automático. Cliente pode ser incluído ou trocado depois de criado o projeto |
+| 21/11/2026 | DP1 (I1) | O ID do canal continua digitado no projeto, como hoje. Um canal pode ter mais de um projeto; a rotina grava o mesmo resumo do canal no Contexto de cada projeto vinculado |
+| 21/11/2026 | DP2 (O5) | O custo vem do relatório de uso do provedor de LLM (router da Hostinger), consultado pela rotina |
 
 ## 4. Decisões pendentes
 
-| ID | Item | Pergunta | Opções |
-|---|---|---|---|
-| DP1 | I1 | Como vincular o canal ao projeto? | (a) botão "Criar canal do projeto" no Prisma, o bot cria o canal e grava discord_channel_id (exige permissão Manage Channels); (b) comando do bot executado dentro do canal, escolhendo o projeto (gerente ou admin) |
-| DP2 | O5 | De onde vem o custo da IA? | (a) relatório de uso do provedor de LLM, consultado pela rotina; (b) tokens e modelo por chamada enviados pelo plugin e gravados em ai_actions_log |
+Nenhuma.
 
 ## 5. Protocolo de execução
 

@@ -24,7 +24,9 @@ import { placeInColumn } from "@/components/project/kanban";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
+import { SaveStatus } from "@/components/ui/save-status";
 import { shortDate } from "@/lib/format";
+import { useAutosave } from "@/lib/use-autosave";
 import { getSupabase } from "@/lib/supabase/client";
 import { OVERDUE_BADGE, TASK_STATUS_DOT } from "@/lib/theme/status";
 import { DIALOG, MSG_ERROR, OVERLAY, restoreFocus, TEXTAREA_CLASS, trapFocus } from "@/lib/ui";
@@ -216,10 +218,7 @@ export function PersonalKanban({ tasks, onChanged }: { tasks: PersonalTask[]; on
           key={editingTask.id}
           task={editingTask}
           onClose={() => setEditing(null)}
-          onSaved={() => {
-            setEditing(null);
-            onChanged();
-          }}
+          onChanged={onChanged}
         />
       )}
     </div>
@@ -375,7 +374,8 @@ function TaskCard({
 }
 
 // Edição: título, prazo, observações, checklist e exclusão (só da própria tarefa pessoal).
-function EditDialog({ task, onClose, onSaved }: { task: PersonalTask; onClose: () => void; onSaved: () => void }) {
+// Salvamento automático: cada alteração é gravada após uma pausa; fechar grava o que faltar.
+function EditDialog({ task, onClose, onChanged }: { task: PersonalTask; onClose: () => void; onChanged: () => void }) {
   const [title, setTitle] = useState(task.title);
   const [due, setDue] = useState(task.due_date ?? "");
   const [notes, setNotes] = useState(task.notes ?? "");
@@ -384,6 +384,8 @@ function EditDialog({ task, onClose, onSaved }: { task: PersonalTask; onClose: (
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
+  const [closeRequested, setCloseRequested] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const titleId = useId();
 
@@ -392,28 +394,49 @@ function EditDialog({ task, onClose, onSaved }: { task: PersonalTask; onClose: (
     return () => restoreFocus(opener);
   }, []);
 
+  const autosave = useAutosave(
+    { title: title.trim(), due_date: due || null, notes: notes.trim() || null, checklist: items },
+    {
+      valid: (v) => v.title !== "",
+      save: async (v) => {
+        const { error } = await getSupabase().from("personal_tasks").update(v).eq("id", task.id);
+        if (error) return error.message;
+        onChanged();
+        return null;
+      },
+    },
+  );
+
+  // Fechar: o item digitado e ainda não confirmado entra no checklist; depois de renderizar
+  // (o autosave já recebeu o valor novo), grava o pendente e fecha. Sem conseguir gravar, pergunta.
+  function requestClose() {
+    const pending = newItem.trim();
+    if (pending && items.length < MAX_ITEMS) {
+      setItems([...items, { id: crypto.randomUUID(), text: pending, done: false }]);
+      setNewItem("");
+    }
+    setCloseRequested(true);
+  }
+  const { flush, cancel } = autosave;
+  useEffect(() => {
+    if (!closeRequested) return;
+    let active = true;
+    flush().then((ok) => {
+      if (!active) return;
+      setCloseRequested(false);
+      if (ok) onClose();
+      else setConfirmDiscard(true);
+    });
+    return () => {
+      active = false;
+    };
+  }, [closeRequested, flush, onClose]);
+
   function addItem() {
     const text = newItem.trim();
     if (!text || items.length >= MAX_ITEMS) return;
     setItems([...items, { id: crypto.randomUUID(), text, done: false }]);
     setNewItem("");
-  }
-
-  async function save(e: FormEvent) {
-    e.preventDefault();
-    if (!title.trim() || busy) return;
-    // Item digitado e ainda não confirmado entra no salvamento.
-    const pending = newItem.trim();
-    const checklist = pending && items.length < MAX_ITEMS ? [...items, { id: crypto.randomUUID(), text: pending, done: false }] : items;
-    setBusy(true);
-    setError(null);
-    const { error } = await getSupabase()
-      .from("personal_tasks")
-      .update({ title: title.trim(), due_date: due || null, notes: notes.trim() || null, checklist })
-      .eq("id", task.id);
-    setBusy(false);
-    if (error) return setError(error.message);
-    onSaved();
   }
 
   async function remove() {
@@ -422,11 +445,13 @@ function EditDialog({ task, onClose, onSaved }: { task: PersonalTask; onClose: (
     setBusy(false);
     setConfirming(false);
     if (error) return setError(error.message);
-    onSaved();
+    cancel();
+    onChanged();
+    onClose();
   }
 
   return createPortal(
-    <div className={cn(OVERLAY, "z-50 items-center justify-center p-4")} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className={cn(OVERLAY, "z-50 items-center justify-center p-4")} onMouseDown={(e) => e.target === e.currentTarget && requestClose()}>
       <div
         ref={ref}
         role="dialog"
@@ -434,11 +459,17 @@ function EditDialog({ task, onClose, onSaved }: { task: PersonalTask; onClose: (
         aria-labelledby={titleId}
         className={cn(DIALOG, "max-h-[90dvh] overflow-y-auto")}
         onKeyDown={(e) => {
-          if (e.key === "Escape" && !confirming) onClose();
+          if (e.key === "Escape" && !confirming && !confirmDiscard) requestClose();
           trapFocus(e, ref.current);
         }}
       >
-        <form onSubmit={save} className="space-y-4">
+        <form
+          className="space-y-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void flush();
+          }}
+        >
           <h2 id={titleId}>Editar tarefa</h2>
           <label className="block space-y-1.5 text-sm">
             <span className="text-muted-foreground">Título</span>
@@ -495,15 +526,13 @@ function EditDialog({ task, onClose, onSaved }: { task: PersonalTask; onClose: (
             <textarea className={cn(TEXTAREA_CLASS, "min-h-24")} maxLength={MAX_NOTES} value={notes} onChange={(e) => setNotes(e.target.value)} />
           </label>
           {error && <p role="alert" className={MSG_ERROR}>{error}</p>}
+          <SaveStatus state={autosave.state} error={autosave.error} invalidText="Informe o título para salvar." />
           <div className="flex flex-wrap items-center gap-2">
             <Button type="button" variant="ghost" onClick={() => setConfirming(true)} disabled={busy}>
               Excluir
             </Button>
-            <Button type="button" variant="outline" className="ml-auto" onClick={onClose}>
-              Cancelar
-            </Button>
-            <Button type="submit" disabled={busy}>
-              Salvar
+            <Button type="button" className="ml-auto" onClick={requestClose} disabled={closeRequested}>
+              Fechar
             </Button>
           </div>
         </form>
@@ -517,6 +546,19 @@ function EditDialog({ task, onClose, onSaved }: { task: PersonalTask; onClose: (
         busy={busy}
         onConfirm={remove}
         onCancel={() => setConfirming(false)}
+      />
+      <ConfirmDialog
+        open={confirmDiscard}
+        title="Descartar alterações?"
+        description="As últimas alterações desta tarefa não puderam ser salvas (título vazio ou erro ao gravar) e serão perdidas."
+        confirmLabel="Descartar"
+        cancelLabel="Continuar editando"
+        destructive
+        onConfirm={() => {
+          cancel();
+          onClose();
+        }}
+        onCancel={() => setConfirmDiscard(false)}
       />
     </div>,
     document.body,
