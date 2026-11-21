@@ -373,6 +373,7 @@ function ProjectSkeleton() {
 // Cliente, status e período do projeto (alimentam o cronograma de portfólio) e canal do Discord (rotina diária).
 // Salvamento automático: cada alteração é gravada após uma pausa, sem botão de salvar.
 type ProjectForm = { client_id: string; status: ProjectStatus; start: string; end: string; channel: string };
+type ChannelProject = Pick<Project, "id" | "name" | "status">;
 const NEW_CLIENT = "__novo__";
 const CHANNEL_RE = /^[0-9]{17,20}$/;
 
@@ -410,6 +411,23 @@ function ProjectEditor({ project, onSaved }: { project: Project; onSaved: () => 
     clientOptions.unshift({ id: project.client_id, name: project.clients.name, status: "ativo" } as Client);
   }
 
+  // Outros projetos no mesmo canal (I1): a rotina grava o mesmo resumo no Contexto de cada um.
+  // Parte do canal já salvo; a lista traz só os projetos que o usuário enxerga (RLS).
+  const savedChannel = project.discord_channel_id;
+  const sameChannel = useQuery<ChannelProject[]>(
+    () =>
+      savedChannel
+        ? getSupabase()
+            .from("projects")
+            .select("id, name, status")
+            .eq("discord_channel_id", savedChannel)
+            .neq("id", project.id)
+            .order("name")
+        : Promise.resolve({ data: [], error: null }),
+    [project.id, savedChannel],
+  );
+  const sharedWith = savedChannel ? (sameChannel.data ?? []) : [];
+
   const autosave = useAutosave(form, {
     valid: (f) => projectFormError(f) === null,
     save: async (f, prev) => {
@@ -432,7 +450,6 @@ function ProjectEditor({ project, onSaved }: { project: Project; onSaved: () => 
       const { error } = await getSupabase().from("projects").update(changes).eq("id", project.id).select("id").single();
       if (error) {
         if (error.code === "PGRST116") return "sem permissão para editar este projeto.";
-        if (error.code === "23505") return "este canal já está vinculado a outro projeto.";
         if (error.code === "23514" && error.message.includes("discord_channel_id")) return "informe só os números do ID do canal.";
         if (error.code === "23514") return "o fim não pode ser anterior ao início.";
         if (error.code === "23503") return "o cliente escolhido não existe mais.";
@@ -539,8 +556,23 @@ function ProjectEditor({ project, onSaved }: { project: Project; onSaved: () => 
       )}
       {(clientError || clients.error) && <p role="alert" className={MSG_ERROR}>{clientError ?? clients.error}</p>}
       <p id="project-discord-help" className="text-[0.8125rem] text-muted-foreground">
-        ID do canal do projeto no Discord. Usado no resumo diário das conversas.
+        ID do canal do projeto no Discord. Usado no resumo diário das conversas. Um canal pode ter mais de um projeto.
       </p>
+      {sharedWith.length > 0 && (
+        <p className="text-[0.8125rem] text-muted-foreground">
+          Também neste canal:{" "}
+          {sharedWith.map((p, i) => (
+            <span key={p.id}>
+              {i > 0 && ", "}
+              <Link href={`/projeto/?id=${p.id}`} className="font-medium text-foreground underline-offset-4 hover:underline">
+                {p.name}
+              </Link>
+              {(p.status === "concluido" || p.status === "cancelado") && ` (${PROJECT_STATUS_LABEL[p.status].toLowerCase()})`}
+            </span>
+          ))}
+          . O resumo diário do canal vai para o Contexto de cada projeto ativo do canal.
+        </p>
+      )}
       <SaveStatus state={autosave.state} error={autosave.error} invalidText={invalidText} />
     </div>
   );
