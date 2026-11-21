@@ -677,7 +677,7 @@ function dateArg(args: Args): string {
   return v;
 }
 
-// Operações da rotina. Escrita só em project_context_entries (kind 'discord'), idempotente por source_ref.
+// Operações da rotina. Escrita só em project_context_entries (kind 'discord'), idempotente por projeto e source_ref.
 async function runRoutineTool(db: SupabaseClient, tool: string, args: Args): Promise<unknown[] | Record<string, unknown>> {
   if (tool === "routine_list_channels") {
     const { data, error } = await db
@@ -708,28 +708,36 @@ async function runRoutineTool(db: SupabaseClient, tool: string, args: Args): Pro
     throw new GatewayError(400, "channel_mismatch", "O canal não está vinculado a este projeto.");
   }
 
+  // Um canal pode ter mais de um projeto (I1): cada projeto tem a sua entrada do dia. Canal remapeado:
+  // o resumo antigo fica no projeto antigo e o novo projeto ganha a sua.
   const sourceRef = `${channelId}:${date}`;
   const { data: existing, error: exErr } = await db
     .from("project_context_entries")
-    .select("id, project_id")
+    .select("id")
+    .eq("project_id", projectId)
     .eq("source_ref", sourceRef)
     .maybeSingle();
   if (exErr) throw exErr;
-  // Canal remapeado para outro projeto: o resumo antigo fica onde está, não é movido.
-  if (existing && existing.project_id !== projectId) {
-    throw new GatewayError(409, "source_ref_conflict", "Já existe um resumo deste canal e dia em outro projeto.");
+
+  if (existing) {
+    const { error } = await db
+      .from("project_context_entries")
+      .update({ title, body, participants, meeting_date: date })
+      .eq("id", existing.id);
+    if (error) throw error;
+    return { id: existing.id, source_ref: sourceRef, created: false };
   }
 
   const { data, error } = await db
     .from("project_context_entries")
-    .upsert(
-      { project_id: projectId, kind: "discord", title, body, participants, meeting_date: date, source_ref: sourceRef, created_by: null },
-      { onConflict: "source_ref" },
-    )
+    .insert({ project_id: projectId, kind: "discord", title, body, participants, meeting_date: date, source_ref: sourceRef, created_by: null })
     .select("id")
     .single();
+  if (error?.code === "23505") {
+    throw new GatewayError(409, "source_ref_conflict", "Já existe um resumo deste canal e dia.");
+  }
   if (error) throw error;
-  return { id: data.id, source_ref: sourceRef, created: !existing };
+  return { id: data.id, source_ref: sourceRef, created: true };
 }
 
 async function handleRoutine(req: Request, given: string): Promise<Response> {

@@ -67,7 +67,7 @@ Rotina diária da Etapa 4: para cada projeto ativo com **Canal do Discord** pree
 
 - Script determinístico, não é agente (H9): o canal define o projeto; o LLM só resume, sem ferramentas, e a conversa entra no prompt como dado.
 - Credencial própria `ROUTINE_SECRET` (cabeçalho `x-routine-secret`), que no `ai-gateway` só lista canais e grava contexto (N5).
-- Idempotente: reexecutar o mesmo dia atualiza a mesma entrada (`source_ref = canal:data`).
+- Idempotente: reexecutar o mesmo dia atualiza a mesma entrada do projeto (`source_ref = canal:data`, único por projeto).
 - Relatório em `#prisma-operacao` (sucesso ou falha por canal e canais do servidor sem projeto) e auditoria em `ai_actions_log` com `source = 'routine'`. O journald guarda só contagens e códigos.
 - Mensagens de bots, inclusive as do próprio assistente, ficam fora do resumo.
 
