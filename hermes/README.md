@@ -63,13 +63,15 @@ Configuração do `config.yaml`, feita uma vez em 20/11/2026:
 
 ## `routine/`
 
-Rotina diária da Etapa 4: para cada projeto ativo com **Canal do Discord** preenchido no editor do projeto, lê as mensagens do dia anterior, pede ao Claude Haiku 5.5 (router da Hostinger) um resumo em JSON (resumo, decisões e pendências) e grava no **Contexto** do projeto com o tipo "Discord".
+Rotina diária da Etapa 4: para cada canal preenchido como **Canal do Discord** em projetos ativos, lê as mensagens do dia anterior, pede ao Claude Haiku 5.5 (router da Hostinger) um resumo em JSON (resumo, decisões e pendências) e grava no **Contexto** de cada projeto do canal com o tipo "Discord".
 
-- Script determinístico, não é agente (H9): o canal define o projeto; o LLM só resume, sem ferramentas, e a conversa entra no prompt como dado.
+- Um canal pode ter mais de um projeto (I1, DP1): o canal é lido e resumido uma vez, e o mesmo resumo vai para o Contexto de cada projeto vinculado, com o rodapé citando os projetos que dividem o canal.
+- Script determinístico, não é agente (H9): o canal define os projetos; o LLM só resume, sem ferramentas, e a conversa entra no prompt como dado.
 - Credencial própria `ROUTINE_SECRET` (cabeçalho `x-routine-secret`), que no `ai-gateway` só lista canais e grava contexto (N5).
-- Idempotente: reexecutar o mesmo dia atualiza a mesma entrada do projeto (`source_ref = canal:data`, único por projeto).
-- Relatório em `#prisma-operacao` (sucesso ou falha por canal e canais do servidor sem projeto) e auditoria em `ai_actions_log` com `source = 'routine'`. O journald guarda só contagens e códigos.
+- Idempotente: reexecutar o mesmo dia atualiza a mesma entrada de cada projeto (`source_ref = canal:data`, único por projeto).
+- Relatório em `#prisma-operacao` (sucesso ou falha por projeto, falha de leitura ou resumo por canal e canais do servidor sem projeto) e auditoria em `ai_actions_log` com `source = 'routine'`. O journald guarda só contagens e códigos. Um projeto com falha na gravação não impede os outros do mesmo canal.
 - Mensagens de bots, inclusive as do próprio assistente, ficam fora do resumo.
+- Testes offline (tudo simulado, sem Discord, LLM nem gateway), a partir da raiz do repositório: `python -m unittest discover -s hermes/routine`. No Windows, sem base de fusos no sistema: `uv run --no-project --with tzdata python -m unittest discover -s hermes/routine`. O arquivo de teste não vai para a VPS (a instalação copia só os três arquivos abaixo).
 
 ### Instalação na VPS
 

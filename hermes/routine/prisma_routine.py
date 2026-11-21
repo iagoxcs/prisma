@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Rotina diária do Prisma (Etapa 4 do roteiro Hermes + Discord).
 
-Para cada projeto com canal do Discord mapeado, lê as mensagens de um dia (America/Sao_Paulo), pede ao LLM
-um resumo em JSON e grava no contexto do projeto pelo ai-gateway (routine_upsert_context).
+Para cada canal do Discord mapeado, lê as mensagens de um dia (America/Sao_Paulo) uma vez, pede ao LLM um
+resumo em JSON e grava o mesmo resumo no contexto de cada projeto vinculado ao canal pelo ai-gateway
+(routine_upsert_context). Um canal pode ter mais de um projeto (I1, decisão DP1).
 
 Regras (H9, N5):
-- Script determinístico, não é agente: o canal define o projeto; o LLM só resume e não tem ferramentas.
+- Script determinístico, não é agente: o canal define os projetos; o LLM só resume e não tem ferramentas.
 - Credencial própria (ROUTINE_SECRET), que no gateway só lista canais e grava contexto.
-- Idempotente: reexecutar o mesmo dia atualiza a mesma entrada (source_ref = canal:data).
+- Idempotente: reexecutar o mesmo dia atualiza a entrada de cada projeto (source_ref = canal:data, único por projeto).
 - O log (journald) registra só contagens e códigos, nunca o conteúdo das mensagens.
 
 Uso: prisma_routine.py [--date AAAA-MM-DD] [--dry-run]
@@ -204,14 +205,15 @@ def parse_summary(text: str) -> dict:
     return {"resumo": data["resumo"].strip(), "decisoes": clean_dec, "pendencias": clean_pend}
 
 
-def summarize(project_name: str, day: date, text: str) -> dict:
+def summarize(project_names: list[str], day: date, text: str) -> dict:
+    label = "Projeto" if len(project_names) == 1 else "Projetos do canal"
     body = {
         "model": LLM_MODEL,
         "max_tokens": 2000,
         "temperature": 0.2,
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": f"Projeto: {project_name}\nDia: {day.strftime('%d/%m/%Y')}\n<conversa>\n{text}\n</conversa>"},
+            {"role": "user", "content": f"{label}: {'; '.join(project_names)}\nDia: {day.strftime('%d/%m/%Y')}\n<conversa>\n{text}\n</conversa>"},
         ],
     }
     last: RoutineError | None = None
@@ -230,7 +232,7 @@ def summarize(project_name: str, day: date, text: str) -> dict:
     raise last or RoutineError("llm_resposta_invalida")
 
 
-def render_body(summary: dict, n_messages: int) -> str:
+def render_body(summary: dict, n_messages: int, project_names: list[str] | None = None) -> str:
     parts = ["## Resumo", summary["resumo"], "", "## Decisões"]
     parts += [f"- {d}" for d in summary["decisoes"]] or ["- Nenhuma registrada."]
     parts += ["", "## Pendências"]
@@ -239,7 +241,11 @@ def render_body(summary: dict, n_messages: int) -> str:
         parts.append(f"- {p['descricao']}" + (f" ({extra})" if extra else ""))
     if not summary["pendencias"]:
         parts.append("- Nenhuma registrada.")
-    parts += ["", f"_Resumo automático de {n_messages} mensagens do canal do projeto no Discord._"]
+    if project_names and len(project_names) > 1:
+        source = "do canal do Discord compartilhado pelos projetos " + ", ".join(project_names[:-1]) + f" e {project_names[-1]}"
+    else:
+        source = "do canal do projeto no Discord"
+    parts += ["", f"_Resumo automático de {n_messages} mensagens {source}._"]
     return "\n".join(parts)[:MAX_BODY_CHARS]
 
 
@@ -272,54 +278,81 @@ def unmapped_channels(mapped: set[str]) -> list[str]:
             if c.get("type") == 0 and c["id"] not in mapped and c["id"] not in ignore]
 
 
+def group_by_channel(channels: list[dict]) -> dict[str, list[dict]]:
+    """Projetos agrupados pelo canal, na ordem em que o gateway os devolve (por nome)."""
+    groups: dict[str, list[dict]] = {}
+    for c in channels:
+        groups.setdefault(c["discord_channel_id"], []).append(c)
+    return groups
+
+
 def run(day: date, dry_run: bool) -> int:
     started = time.monotonic()
     report = [f"**Rotina diária do Prisma** · {day.strftime('%d/%m/%Y')}" + (" · simulação" if dry_run else "")]
     failures = 0
 
     channels = gateway("routine_list_channels")["data"]
-    mapped = {c["discord_channel_id"] for c in channels}
-    print(f"{len(channels)} canal(is) mapeado(s)")
+    groups = group_by_channel(channels)
+    print(f"{len(channels)} projeto(s) em {len(groups)} canal(is) mapeado(s)")
 
-    for c in channels:
-        name, channel_id, project_id = c["name"], c["discord_channel_id"], c["project_id"]
+    for channel_id, projects in groups.items():
+        names = [p["name"] for p in projects]
+        label = ", ".join(names)
+        shared = " (canal compartilhado)" if len(projects) > 1 else ""
+
+        # Uma leitura e um resumo por canal; a falha aqui vale para todos os projetos do canal.
         try:
             messages = day_messages(channel_id, day)
             text, people = transcript(messages)
             if not text:
-                report.append(f"- {name}: sem mensagens")
+                report.append(f"- {label}: sem mensagens")
                 print(f"{channel_id}: sem mensagens")
                 continue
-            summary = summarize(name, day, text)
-            body = render_body(summary, len(messages))
-            if dry_run:
-                report.append(f"- {name}: {len(messages)} mensagens, resumo gerado (não gravado)")
-                print(f"{channel_id}: {len(messages)} mensagens, simulação")
-                continue
-            res = gateway("routine_upsert_context", {
-                "project_id": project_id,
-                "channel_id": channel_id,
-                "date": day.isoformat(),
-                "title": f"Discord: conversas de {day.strftime('%d/%m/%Y')}",
-                "body": body,
-                "participants": ", ".join(people)[:1000],
-            })
-            verb = "criado" if res["data"].get("created") else "atualizado"
-            report.append(f"- {name}: {len(messages)} mensagens, resumo {verb}")
-            print(f"{channel_id}: {len(messages)} mensagens, {verb}")
+            summary = summarize(names, day, text)
+            body = render_body(summary, len(messages), names)
         except RoutineError as e:
-            failures += 1
-            report.append(f"- {name}: falha ({e.code})")
+            failures += len(projects)
+            report.append(f"- {label}: falha ({e.code})")
             print(f"{channel_id}: falha ({e.code})", file=sys.stderr)
+            continue
         except Exception as e:  # noqa: BLE001 — um canal com erro não derruba os demais
-            failures += 1
-            report.append(f"- {name}: falha (erro inesperado)")
+            failures += len(projects)
+            report.append(f"- {label}: falha (erro inesperado)")
             print(f"{channel_id}: erro inesperado ({type(e).__name__})", file=sys.stderr)
+            continue
+
+        if dry_run:
+            report.append(f"- {label}: {len(messages)} mensagens, resumo gerado (não gravado)")
+            print(f"{channel_id}: {len(messages)} mensagens, {len(projects)} projeto(s), simulação")
+            continue
+
+        # O mesmo resumo no contexto de cada projeto do canal; um projeto com erro não impede os demais.
+        for p in projects:
+            try:
+                res = gateway("routine_upsert_context", {
+                    "project_id": p["project_id"],
+                    "channel_id": channel_id,
+                    "date": day.isoformat(),
+                    "title": f"Discord: conversas de {day.strftime('%d/%m/%Y')}",
+                    "body": body,
+                    "participants": ", ".join(people)[:1000],
+                })
+                verb = "criado" if res["data"].get("created") else "atualizado"
+                report.append(f"- {p['name']}: {len(messages)} mensagens, resumo {verb}{shared}")
+                print(f"{channel_id} -> {p['project_id']}: {len(messages)} mensagens, {verb}")
+            except RoutineError as e:
+                failures += 1
+                report.append(f"- {p['name']}: falha ({e.code}){shared}")
+                print(f"{channel_id} -> {p['project_id']}: falha ({e.code})", file=sys.stderr)
+            except Exception as e:  # noqa: BLE001
+                failures += 1
+                report.append(f"- {p['name']}: falha (erro inesperado){shared}")
+                print(f"{channel_id} -> {p['project_id']}: erro inesperado ({type(e).__name__})", file=sys.stderr)
 
     if not channels:
         report.append("- Nenhum projeto ativo com canal mapeado.")
     try:
-        loose = unmapped_channels(mapped)
+        loose = unmapped_channels(set(groups))
         if loose:
             report.append("Canais sem projeto (ignorados): " + ", ".join(loose))
     except RoutineError as e:
