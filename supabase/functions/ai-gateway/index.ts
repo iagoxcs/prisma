@@ -5,9 +5,13 @@
 //   do próprio usuário (RLS). Prévias resistentes a reinício (O3): depois de postar a prévia, o plugin grava
 //   canal e mensagem com preview_posted; ao iniciar, chama resume_previews (sem usuário) e recebe as prévias
 //   abertas com um código novo, porque o banco guarda só o hash do anterior.
-// - rotina diária (x-routine-secret, Etapa 4): só lista os canais mapeados e grava o resumo do dia.
-//   Não há usuário: roda com o service_role, restrita a essas duas operações (N5).
+// - rotina diária (x-routine-secret, Etapa 4): lista os canais mapeados e grava o resumo do dia.
+//   Não há usuário: roda com o service_role, restrita às ROUTINE_TOOLS (N5).
+// Telemetria de uso da IA (O5, DP3): o plugin envia os tokens do bot e da transcrição com record_usage (sem
+// usuário, como resume_previews); a rotina grava os dela com routine_record_usage e lê o resumo do mês com
+// routine_usage_summary. Só contagens de tokens e nome do modelo, nunca conteúdo.
 import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
+import { aggregateUsage, parseRange, parseUsageRows, todayBrt, type UsageRow, UsageError, type UsageSource } from "./usage.ts";
 
 const RATE_LIMIT_PER_MIN = 30; // DV7
 const PROPOSE_LIMIT_PER_MIN = 10; // DV7: escrita
@@ -21,7 +25,7 @@ const TOOLS = ["list_projects", "list_tasks", "get_task", "list_members", "searc
 // preview_posted (O3): o plugin informa onde postou a prévia, para retomá-la depois de um reinício.
 const WRITE_TOOLS = ["propose", "commit", "cancel", "whoami", "preview_posted"] as const;
 const RESUME_LIMIT = 200; // O3: prévias devolvidas por resume_previews
-const ROUTINE_TOOLS = ["routine_list_channels", "routine_upsert_context"] as const;
+const ROUTINE_TOOLS = ["routine_list_channels", "routine_upsert_context", "routine_record_usage", "routine_usage_summary"] as const;
 type Tool = (typeof TOOLS)[number];
 type Args = Record<string, unknown>;
 type Status = "proposed" | "executed" | "denied" | "error";
@@ -677,8 +681,52 @@ function dateArg(args: Args): string {
   return v;
 }
 
-// Operações da rotina. Escrita só em project_context_entries (kind 'discord'), idempotente por projeto e source_ref.
+// Telemetria (O5): linhas validadas em usage.ts; a soma é atômica no banco (record_ai_usage, só service_role).
+function usageRowsArg(args: Args, allowed: readonly UsageSource[]): UsageRow[] {
+  try {
+    return parseUsageRows(args.rows, allowed, todayBrt());
+  } catch (e) {
+    if (e instanceof UsageError) throw new GatewayError(400, "invalid_args", e.message);
+    throw e;
+  }
+}
+
+async function recordUsage(db: SupabaseClient, rows: UsageRow[]): Promise<void> {
+  for (const r of rows) {
+    const { error } = await db.rpc("record_ai_usage", {
+      p_day: r.day, p_source: r.source, p_model: r.model, p_calls: r.calls,
+      p_input: r.input_tokens, p_output: r.output_tokens, p_cache_read: r.cache_read_tokens, p_cache_write: r.cache_write_tokens,
+    });
+    if (error) throw error;
+  }
+}
+
+// Operações da rotina. Escrita só em project_context_entries (kind 'discord'), idempotente por projeto e
+// source_ref, e nos contadores de uso da própria rotina (source 'rotina').
 async function runRoutineTool(db: SupabaseClient, tool: string, args: Args): Promise<unknown[] | Record<string, unknown>> {
+  if (tool === "routine_record_usage") {
+    const rows = usageRowsArg(args, ["rotina"]);
+    await recordUsage(db, rows);
+    return { rows: rows.length };
+  }
+
+  if (tool === "routine_usage_summary") {
+    let range: { from: string; to: string };
+    try {
+      range = parseRange(args.from, args.to);
+    } catch (e) {
+      if (e instanceof UsageError) throw new GatewayError(400, "invalid_args", e.message);
+      throw e;
+    }
+    const { data, error } = await db
+      .from("ai_usage_daily")
+      .select("source, model, calls, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens")
+      .gte("day", range.from)
+      .lte("day", range.to);
+    if (error) throw error;
+    return aggregateUsage(data ?? []);
+  }
+
   if (tool === "routine_list_channels") {
     const { data, error } = await db
       .from("projects")
@@ -866,6 +914,42 @@ async function handleResume(requestId: string): Promise<Response> {
   }
 }
 
+// record_usage (O5): chamada de serviço do plugin, sem usuário (já autenticado pelo x-hermes-secret). Soma os
+// tokens do bot e da transcrição em ai_usage_daily. O log guarda só a quantidade de linhas e de chamadas.
+async function handleUsage(requestId: string, args: Args): Promise<Response> {
+  const service = serviceClient();
+  const audit = async (status: Status, result: Record<string, unknown>) => {
+    const { error } = await service.from("ai_actions_log").insert({
+      source: "discord",
+      status,
+      tool: "record_usage",
+      user_id: null,
+      input: { args: { rows: Array.isArray(args.rows) ? args.rows.length : 0 } },
+      result,
+      request_id: requestId,
+      project_id: null,
+      external_ref: null,
+    });
+    if (error) console.error(`ai_actions_log: falha ao gravar (${error.code ?? "sem código"})`);
+  };
+
+  try {
+    const rows = usageRowsArg(args, ["bot", "transcricao"]);
+    await recordUsage(service, rows);
+    const calls = rows.reduce((n, r) => n + r.calls, 0);
+    await audit("executed", { count: rows.length, calls });
+    return json({ ok: true, tool: "record_usage", count: rows.length });
+  } catch (e) {
+    if (e instanceof GatewayError) {
+      await audit("denied", { code: e.code });
+      return json({ code: e.code, error: e.message }, e.status);
+    }
+    console.error(`ai-gateway: record_usage falhou (${e instanceof Error ? e.message : "erro"})`);
+    await audit("error", { code: "internal" });
+    return json({ code: "internal", error: "Erro interno." }, 500);
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ code: "method_not_allowed", error: "Método não permitido." }, 405);
 
@@ -891,6 +975,15 @@ Deno.serve(async (req) => {
     const rid = typeof body.request_id === "string" ? body.request_id : "";
     if (!UUID_RE.test(rid)) return json({ code: "invalid_request", error: "request_id inválido." }, 400);
     return handleResume(rid);
+  }
+  if (body.tool === "record_usage") {
+    if (body.discord_user_id !== undefined) {
+      return json({ code: "invalid_request", error: "record_usage não recebe discord_user_id." }, 400);
+    }
+    const rid = typeof body.request_id === "string" ? body.request_id : "";
+    if (!UUID_RE.test(rid)) return json({ code: "invalid_request", error: "request_id inválido." }, 400);
+    const usageArgs: Args = body.args && typeof body.args === "object" && !Array.isArray(body.args) ? (body.args as Args) : {};
+    return handleUsage(rid, usageArgs);
   }
   const discordId = typeof body.discord_user_id === "string" ? body.discord_user_id : "";
   const requestId = typeof body.request_id === "string" ? body.request_id : "";
