@@ -153,6 +153,42 @@ export type Database = {
           },
         ]
       }
+      ai_usage_daily: {
+        Row: {
+          cache_read_tokens: number
+          cache_write_tokens: number
+          calls: number
+          day: string
+          input_tokens: number
+          model: string
+          output_tokens: number
+          source: string
+          updated_at: string
+        }
+        Insert: {
+          cache_read_tokens?: number
+          cache_write_tokens?: number
+          calls?: number
+          day: string
+          input_tokens?: number
+          model: string
+          output_tokens?: number
+          source: string
+          updated_at?: string
+        }
+        Update: {
+          cache_read_tokens?: number
+          cache_write_tokens?: number
+          calls?: number
+          day?: string
+          input_tokens?: number
+          model?: string
+          output_tokens?: number
+          source?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       app_settings: {
         Row: {
           description: string | null
@@ -1327,6 +1363,19 @@ export type Database = {
       is_project_member: { Args: { pid: string }; Returns: boolean }
       knowledge_item_id: { Args: { object_name: string }; Returns: string }
       profile_by_discord_id: { Args: { p_discord_id: string }; Returns: string }
+      record_ai_usage: {
+        Args: {
+          p_cache_read: number
+          p_cache_write: number
+          p_calls: number
+          p_day: string
+          p_input: number
+          p_model: string
+          p_output: number
+          p_source: string
+        }
+        Returns: undefined
+      }
       role_can: { Args: { perm: string }; Returns: boolean }
       shares_project_with: { Args: { other: string }; Returns: boolean }
     }
