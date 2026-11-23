@@ -32,7 +32,7 @@ Supabase: Auth · Postgres (RLS) · Storage · Realtime
 
 Toda autorização está no banco. O `AppShell` redireciona para `/login/` apenas por UX.
 
-Cada projeto tem um canal no Discord (`projects.discord_channel_id`); a rotina diária resume o canal e grava o resumo em `project_context_entries`.
+Cada projeto pode ter um canal no Discord (`projects.discord_channel_id`), e um canal pode ter mais de um projeto (I1, DP1). A rotina diária lê e resume cada canal uma vez e grava o mesmo resumo em `project_context_entries` de cada projeto do canal (único por `project_id` + `source_ref`).
 
 Desde 05/10/2026 os JWT são assinados em ES256. A chave HS256 anterior fica mantida até a migração das chaves de API.
 
