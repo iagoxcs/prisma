@@ -13,6 +13,8 @@ Regras (docs/ARQUITETURA.md):
   `gateway run` pede as prévias abertas (com um segredo novo) e volta a observá-las. Anexos ficam de fora.
 - Arquivos (files.py): lê TXT, MD, CSV, PDF, DOCX, XLSX, HTML e BPMN recebidos na DM e gera TXT, MD, HTML,
   DOCX, PDF, XLSX e BPMN, enviados na própria DM. Anexar um arquivo a uma tarefa passa pela prévia.
+- Telemetria de uso (O5): conta os tokens do bot (hooks post_api_request e post_auxiliary_call) e da
+  transcrição e envia ao gateway (record_usage) a cada 10 minutos. Só números e nome do modelo.
 """
 from __future__ import annotations
 
@@ -136,6 +138,147 @@ def _post(payload: dict) -> dict:
         return {"ok": False, "code": "unavailable", "error": "O Prisma não respondeu. Tente de novo."}
 
 
+# --- Telemetria de uso da IA (O5, DP3) --------------------------------------------------------------------
+# O router da Hostinger não tem API de uso: o plugin conta os tokens. Os hooks públicos do Hermes
+# post_api_request e post_auxiliary_call entregam o modelo e o `usage` já normalizado de cada chamada do bot;
+# a transcrição soma o `usage` da própria resposta. Tudo fica num buffer em memória por (dia, fonte, modelo) e
+# vai ao ai-gateway (record_usage) a cada 10 minutos, só no processo `gateway run`. Só números e o nome do
+# modelo: nenhum conteúdo de mensagem passa por aqui. O dia é o de Brasília (UTC−3, sem horário de verão).
+
+USAGE_FLUSH_S = 600
+USAGE_MAX_KEYS = 500  # teto do buffer se o gateway ficar fora do ar
+USAGE_ROWS_PER_CALL = 50  # limite do record_usage
+USAGE_KEEP_DAYS = 7  # o gateway recusa dias mais antigos
+USAGE_FIELDS = ("calls", "input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens")
+_USAGE: dict[tuple[str, str, str], list[int]] = {}
+_USAGE_LOCK = threading.Lock()
+_USAGE_STARTED = False
+_BRT = None
+
+
+def _today_brt() -> str:
+    global _BRT
+    from datetime import datetime, timedelta, timezone
+    if _BRT is None:
+        _BRT = timezone(timedelta(hours=-3))
+    return datetime.now(_BRT).date().isoformat()
+
+
+def _int(v) -> int:
+    try:
+        n = int(v or 0)
+    except (TypeError, ValueError):
+        return 0
+    return n if n > 0 else 0
+
+
+def _normalize_usage(u) -> tuple[int, int, int, int] | None:
+    """(entrada sem cache, saída, leitura de cache, escrita de cache) a partir do usage do Hermes
+    (CanonicalUsage), do formato OpenAI (prompt_tokens/completion_tokens) ou do Anthropic."""
+    if not isinstance(u, dict):
+        return None
+    if "prompt_tokens" in u and "cache_read_tokens" not in u:
+        details = u.get("prompt_tokens_details") if isinstance(u.get("prompt_tokens_details"), dict) else {}
+        read = _int(details.get("cached_tokens")) or _int(u.get("cache_read_input_tokens"))
+        write = _int(u.get("cache_creation_input_tokens"))
+        return max(_int(u.get("prompt_tokens")) - read - write, 0), _int(u.get("completion_tokens")), read, write
+    if any(k in u for k in ("input_tokens", "output_tokens", "cache_read_tokens")):
+        read = _int(u.get("cache_read_tokens")) or _int(u.get("cache_read_input_tokens"))
+        write = _int(u.get("cache_write_tokens")) or _int(u.get("cache_creation_input_tokens"))
+        return _int(u.get("input_tokens")), _int(u.get("output_tokens")), read, write
+    return None
+
+
+def _usage_model(model) -> str:
+    name = re.sub(r"[^A-Za-z0-9._:/@-]", "_", str(model or "").strip())[:100]
+    return name or "desconhecido"
+
+
+def _add_usage(source: str, model, usage, calls: int = 1) -> None:
+    counts = _normalize_usage(usage)
+    if counts is None:
+        return
+    key = (_today_brt(), source, _usage_model(model))
+    with _USAGE_LOCK:
+        cur = _USAGE.get(key)
+        if cur is None:
+            if len(_USAGE) >= USAGE_MAX_KEYS:
+                return
+            cur = _USAGE[key] = [0, 0, 0, 0, 0]
+        for i, n in enumerate((max(calls, 1), *counts)):
+            cur[i] += n
+
+
+def _on_llm_usage(model=None, response_model=None, usage=None, **_kw) -> None:
+    """Hooks post_api_request e post_auxiliary_call. Nunca levanta exceção: não pode atrapalhar o bot."""
+    try:
+        calls = _int(usage.get("request_count")) if isinstance(usage, dict) else 0
+        _add_usage("bot", response_model or model, usage, calls or 1)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _merge_back(items: list[tuple[tuple[str, str, str], list[int]]]) -> None:
+    from datetime import date, timedelta
+    oldest = (date.fromisoformat(_today_brt()) - timedelta(days=USAGE_KEEP_DAYS)).isoformat()
+    with _USAGE_LOCK:
+        for key, vals in items:
+            if key[0] < oldest:
+                continue
+            cur = _USAGE.get(key)
+            if cur is None:
+                if len(_USAGE) >= USAGE_MAX_KEYS:
+                    continue
+                cur = _USAGE[key] = [0, 0, 0, 0, 0]
+            for i, n in enumerate(vals):
+                cur[i] += n
+
+
+def _flush_usage() -> int:
+    """Envia o buffer ao gateway. Falha passageira devolve os números ao buffer; recusa (invalid_args) descarta."""
+    with _USAGE_LOCK:
+        items = list(_USAGE.items())
+        _USAGE.clear()
+    sent = 0
+    for i in range(0, len(items), USAGE_ROWS_PER_CALL):
+        chunk = items[i:i + USAGE_ROWS_PER_CALL]
+        rows = [{"day": d, "source": s, "model": m, **dict(zip(USAGE_FIELDS, vals))} for (d, s, m), vals in chunk]
+        res = _post({"tool": "record_usage", "args": {"rows": rows}, "request_id": str(uuid.uuid4())})
+        if res.get("ok"):
+            sent += len(rows)
+            continue
+        code = str(res.get("code") or "erro")
+        if code in {"unavailable", "internal", "not_configured"} or code.startswith("http_5"):
+            _merge_back(chunk)
+        print(f"prisma: telemetria de uso não enviada ({code})", flush=True)
+    return sent
+
+
+def _usage_loop() -> None:
+    while True:
+        time.sleep(USAGE_FLUSH_S)
+        try:
+            _flush_usage()
+        except Exception as e:  # noqa: BLE001
+            print(f"prisma: telemetria de uso falhou ({type(e).__name__})", flush=True)
+
+
+def _start_usage(ctx) -> None:
+    """Só no processo `gateway run` (o do bot): registra os hooks, a thread de envio e um último envio ao sair."""
+    global _USAGE_STARTED
+    if _USAGE_STARTED or not _should_resume():
+        return
+    _USAGE_STARTED = True
+    for hook in ("post_api_request", "post_auxiliary_call"):
+        try:
+            ctx.register_hook(hook, _on_llm_usage)
+        except Exception as e:  # noqa: BLE001 — versão do Hermes sem o hook: segue sem contar o bot
+            print(f"prisma: hook {hook} indisponível ({type(e).__name__})", flush=True)
+    threading.Thread(target=_usage_loop, name="prisma-usage", daemon=True).start()
+    import atexit
+    atexit.register(_flush_usage)
+
+
 # --- Áudio (Etapa 6) --------------------------------------------------------------------------------------
 # Provedor de transcrição registrado pelo plugin (stt.provider: prisma_stt). Pré-checagem do roteiro:
 # só em DM do Discord e só para autor vinculado a um perfil ativo e interno (whoami no ai-gateway); fora
@@ -218,7 +361,9 @@ def transcribe_voice(file_path: str, language: str | None = None, prompt: str | 
                      "User-Agent": "prisma-plugin/1.0"},
         )
         with urllib.request.urlopen(req, timeout=180) as r:
-            content = json.loads(r.read().decode("utf-8"))["choices"][0]["message"]["content"]
+            data = json.loads(r.read().decode("utf-8"))
+        _add_usage("transcricao", data.get("model") or STT_MODEL, data.get("usage"))  # O5: só contagens
+        content = data["choices"][0]["message"]["content"]
         if isinstance(content, list):
             content = "".join(part.get("text", "") for part in content if isinstance(part, dict))
         text = (content or "").strip()
@@ -1141,3 +1286,4 @@ def register(ctx) -> None:
         ctx.register_tool(name=name, toolset="prisma", schema=schema, handler=handler, emoji=emoji)
     ctx.register_transcription_provider(_transcription_provider())
     _start_resume()
+    _start_usage(ctx)
