@@ -3,16 +3,19 @@
 Regras (docs/ARQUITETURA.md):
 - S1: o discord_user_id vem do contexto da sessão do gateway do Hermes (HERMES_SESSION_USER_ID), nunca
   de argumento do LLM. Nenhuma ferramenta tem parâmetro de usuário.
-- Dados de projeto só por DM: fora de uma DM do Discord a ferramenta recusa sem chamar o ai-gateway.
+- DM e canais (DP6, 24/11/2026): as ferramentas funcionam na DM e nos canais e tópicos do Discord em que o
+  bot é chamado (@prisma), sempre com os dados que o autor pode ver (RLS). Fora do Discord, recusam sem
+  chamar o ai-gateway. A transcrição de áudio continua só na DM.
 - O ai-gateway (Supabase Edge Function) autentica pelo x-hermes-secret, abre a sessão do usuário e aplica a RLS.
 - Escrita em duas fases com prévia (H5, S3, revisto em 13/11/2026): a proposta devolve um segredo que fica só
-  neste plugin. O plugin posta na DM a prévia do que será gravado, com ✅ e ❌. Só grava (commit) depois de
-  conferir, direto na API do Discord, que o próprio usuário reagiu ✅ ou respondeu "sim" depois da prévia.
-  O LLM nunca vê o segredo e não consegue confirmar sozinho.
+  neste plugin. O plugin posta na conversa do pedido (DM, canal ou tópico) a prévia do que será gravado, com
+  ✅ e ❌. Só grava (commit) depois de conferir, direto na API do Discord, que o próprio autor do pedido reagiu
+  ✅ ou respondeu "sim" depois da prévia. Reação ou resposta de outra pessoa no canal não conta. O LLM nunca vê
+  o segredo e não consegue confirmar sozinho.
 - Prévias resistentes a reinício (O3): o gateway guarda onde cada prévia foi postada; ao iniciar, o processo
   `gateway run` pede as prévias abertas (com um segredo novo) e volta a observá-las. Anexos ficam de fora.
-- Arquivos (files.py): lê TXT, MD, CSV, PDF, DOCX, XLSX, HTML e BPMN recebidos na DM e gera TXT, MD, HTML,
-  DOCX, PDF, XLSX e BPMN, enviados na própria DM. Anexar um arquivo a uma tarefa passa pela prévia.
+- Arquivos (files.py): lê TXT, MD, CSV, PDF, DOCX, XLSX, HTML e BPMN recebidos na conversa e gera TXT, MD,
+  HTML, DOCX, PDF, XLSX e BPMN, enviados na própria conversa. Anexar um arquivo a uma tarefa passa pela prévia.
 - Telemetria de uso (O5): conta os tokens do bot (hooks post_api_request e post_auxiliary_call) e da
   transcrição e envia ao gateway (record_usage) a cada 10 minutos. Só números e nome do modelo.
 """
@@ -50,9 +53,9 @@ GATEWAY_URL = os.environ.get(
 TIMEOUT_S = 30
 DM_CHAT_TYPES = {"dm", "direct", "private"}
 
-MSG_ONLY_DM = (
-    "Por segurança, consultas ao Prisma só funcionam em mensagem direta (DM) com o bot. "
-    "Peça ao usuário para repetir o pedido na DM."
+MSG_ONLY_DISCORD = (
+    "As ferramentas do Prisma só funcionam pelo Discord (DM com o bot ou @prisma num canal). "
+    "Peça ao usuário para repetir o pedido lá."
 )
 
 
@@ -84,19 +87,45 @@ def _session() -> tuple[str, str, str]:
     )
 
 
+def _in_dm() -> bool:
+    platform, chat_type, _ = _session()
+    return platform == "discord" and chat_type in DM_CHAT_TYPES
+
+
+def _snowflake_id(value: str) -> str | None:
+    value = (value or "").strip()
+    return value if value.isdigit() and 17 <= len(value) <= 20 else None
+
+
+def _session_channel() -> str | None:
+    """Canal da conversa fora da DM (DP6): o tópico, se houver, senão o canal. None se o Hermes não informar."""
+    from gateway.session_context import get_session_env as g
+    return _snowflake_id(g("HERMES_SESSION_THREAD_ID", "")) or _snowflake_id(g("HERMES_SESSION_CHAT_ID", ""))
+
+
+def _conversation_channel(user_id: str) -> str:
+    """Onde postar prévias e arquivos: a própria conversa do pedido. Na DM, ou se o Hermes não informar o canal,
+    a DM do autor."""
+    if not _in_dm():
+        channel = _session_channel()
+        if channel:
+            return channel
+    return _dm_channel(user_id)
+
+
 def _call(tool: str, args: dict) -> str:
     return json.dumps(_request(tool, args), ensure_ascii=False)
 
 
 def _request(tool: str, args: dict, *, as_user: str | None = None) -> dict:
     # as_user: só para o observador de reações (thread sem contexto de sessão), que age sobre uma prévia já
-    # criada numa DM por esse mesmo usuário. Nunca vem de argumento do LLM.
+    # criada por esse mesmo usuário. Nunca vem de argumento do LLM.
     if as_user is not None:
         user_id = as_user
     else:
-        platform, chat_type, user_id = _session()
-        if platform != "discord" or chat_type not in DM_CHAT_TYPES:
-            return {"ok": False, "code": "dm_only", "error": MSG_ONLY_DM}
+        platform, _, user_id = _session()
+        if platform != "discord":  # DP6: DM, canal ou tópico do Discord
+            return {"ok": False, "code": "discord_only", "error": MSG_ONLY_DISCORD}
     if not user_id.isdigit():
         return {"ok": False, "code": "no_author", "error": "Não foi possível identificar o autor."}
     return _post({
@@ -282,7 +311,8 @@ def _start_usage(ctx) -> None:
 # --- Áudio (Etapa 6) --------------------------------------------------------------------------------------
 # Provedor de transcrição registrado pelo plugin (stt.provider: prisma_stt). Pré-checagem do roteiro:
 # só em DM do Discord e só para autor vinculado a um perfil ativo e interno (whoami no ai-gateway); fora
-# disso o áudio não sai da VPS. A última transcrição de cada usuário fica em memória por 30 minutos para
+# disso o áudio não sai da VPS. Continua só na DM mesmo com as ferramentas liberadas nos canais (DP6): não
+# transcrevemos o áudio de outras pessoas num canal. A última transcrição de cada usuário fica em memória por 30 minutos para
 # prisma_registrar_transcricao gravar o texto literal, sem o LLM redigitá-lo.
 #
 # Desde a DP5 (23/11/2026) a transcrição usa a API de transcrição da OpenAI (/v1/audio/transcriptions,
@@ -339,9 +369,11 @@ def _stt_fail(message: str) -> dict:
 
 def transcribe_voice(file_path: str, language: str | None = None, prompt: str | None = None) -> dict:
     try:
-        check = _request("whoami", {})  # também recusa fora da DM, sem chamar o gateway
+        if not _in_dm():  # DP6: áudio só na DM, sem chamar o gateway
+            return _stt_fail("Áudio não transcrito: a transcrição só funciona na DM com o bot.")
+        check = _request("whoami", {})
         if not check.get("ok"):
-            return _stt_fail("Áudio não transcrito: só funciona em DM e para contas vinculadas ao Prisma.")
+            return _stt_fail("Áudio não transcrito: só funciona para contas vinculadas ao Prisma.")
         _, _, user_id = _session()
         key = _env(STT_KEY_ENV)
         if not key:
@@ -463,8 +495,9 @@ _PENDING: dict[str, dict] = {}  # pending_id → {code, user_id, channel_id, mes
 _PENDING_LOCK = threading.Lock()
 
 MSG_PREVIEW_SENT = (
-    "A prévia foi postada na DM com os botões ✅ e ❌ (vale 10 minutos). Não repita a prévia inteira: diga em uma "
-    "frase que ela está acima e que basta clicar em ✅ para gravar (ou ❌ para cancelar). O clique grava sozinho e a "
+    "A prévia foi postada nesta conversa com os botões ✅ e ❌ (vale 10 minutos). Não repita a prévia inteira: diga "
+    "em uma frase que ela está acima e que basta clicar em ✅ para gravar (ou ❌ para cancelar). Num canal, só o "
+    "autor do pedido pode confirmar. O clique grava sozinho e a "
     "prévia é atualizada com o resultado. Se, em vez de clicar, o usuário responder 'sim' ou 'ok', chame "
     "prisma_confirmar_acao com este pending_id; se responder 'não', chame prisma_cancelar_acao. Se ele pedir "
     "mudanças, cancele esta e proponha de novo. Nunca chame prisma_confirmar_acao sem uma resposta do usuário: o "
@@ -480,8 +513,12 @@ _DENY = {"nao", "n", "cancela", "cancelar", "cancelado", "nao pode", "nao confir
          "nao grava", "deixa", "deixa pra la", "esquece", "❌", "\U0001f44e"}
 
 
+_MENTION_RE = re.compile(r"<@[!&]?\d+>")
+
+
 def _norm(text: str) -> str:
-    s = unicodedata.normalize("NFD", (text or "").strip().lower())
+    # Num canal o usuário chama o bot com @prisma: a menção (<@id>) não faz parte da resposta.
+    s = unicodedata.normalize("NFD", _MENTION_RE.sub(" ", text or "").strip().lower())
     s = "".join(c for c in s if unicodedata.category(c) != "Mn")
     s = re.sub(r"[.!,;:]+", " ", s)
     return re.sub(r"\s+", " ", s).strip()
@@ -596,15 +633,15 @@ def _propose(action: str, params: dict, file: str | None = None, batch: dict | N
     try:
         if not code or not pending_id:
             raise DiscordError("proposta sem segredo")
-        channel_id = _dm_channel(user_id)
+        channel_id = _conversation_channel(user_id)  # DP6: na conversa do pedido (DM, canal ou tópico)
         extra_ids = [_post_message(channel_id, chunk) for chunk in chunks]
         message_id = _post_message(channel_id, text)
     except DiscordError:
         if pending_id:
             _request("cancel", {"pending_id": pending_id})
         return json.dumps({
-            "ok": False, "code": "dm_failed",
-            "error": "Não consegui postar a prévia na DM; nada será gravado. Tente de novo.",
+            "ok": False, "code": "post_failed",
+            "error": "Não consegui postar a prévia na conversa; nada será gravado. Tente de novo.",
         }, ensure_ascii=False)
     _gc_pending()
     entry = {"code": code, "user_id": user_id, "channel_id": channel_id, "message_id": message_id,
@@ -627,8 +664,9 @@ def _propose(action: str, params: dict, file: str | None = None, batch: dict | N
 def _user_reaction(entry: dict) -> str | None:
     """Lê a prévia uma vez: 'yes' / 'no' se o usuário reagiu ✅ / ❌, senão None.
 
-    Numa DM só o bot e o usuário reagem; a contagem > 1 indica que o usuário reagiu, e a lista de quem
-    reagiu confirma que foi ele (uma chamada a mais só quando a contagem muda)."""
+    A contagem > 1 indica que alguém além do bot reagiu; a lista de quem reagiu confirma que foi o autor do
+    pedido (uma chamada a mais só quando a contagem passa de 1). Num canal (DP6), a reação de outra pessoa
+    aumenta a contagem, mas não está na lista do autor e não decide nada."""
     msg = _discord("GET", f"/channels/{entry['channel_id']}/messages/{entry['message_id']}") or {}
     counts = {(r.get("emoji") or {}).get("name"): int(r.get("count") or 0) for r in msg.get("reactions") or []}
     if counts.get(NO, 0) > 1 and _reacted(entry, NO):
@@ -741,7 +779,7 @@ def _epoch(iso: str) -> float:
 def _resume_previews() -> int:
     """Pede ao gateway as prévias abertas (cada uma com um segredo novo) e volta a observá-las.
 
-    Não reposta nem reage de novo: a mensagem e as reações do bot já estão na DM."""
+    Não reposta nem reage de novo: a mensagem e as reações do bot já estão na conversa (DM ou canal)."""
     res: dict = {}
     for wait in (0, *RESUME_WAITS_S):
         time.sleep(wait)
@@ -842,8 +880,8 @@ def _supersede(pending_id: str, entry: dict, new_id: str) -> None:
 def _propose_create(project_id: str | None, tasks: list[dict]) -> str:
     """Cria tarefas sempre numa prévia só. Se o LLM propuser tarefas uma a uma (ou em lotes seguidos) no mesmo
     projeto, a proposta nova absorve as prévias de criação ainda abertas da mesma pessoa feitas há pouco: posta
-    uma prévia única com todas e apaga as anteriores da DM. As propostas do mesmo usuário passam em fila, então
-    chamadas em paralelo também se juntam."""
+    uma prévia única com todas e apaga as anteriores da conversa. As propostas do mesmo usuário passam em fila,
+    então chamadas em paralelo também se juntam."""
     _, _, user_id = _session()
     with _PENDING_LOCK:
         user_lock = _CREATE_LOCKS.setdefault(user_id, threading.Lock())
@@ -881,7 +919,7 @@ def _propose_create(project_id: str | None, tasks: list[dict]) -> str:
                 for pid, e in held:
                     _supersede(pid, e, res["pending_id"])
                 res["observacao"] = (
-                    f"As prévias de criação anteriores foram juntadas a esta: agora há UMA única prévia na DM com "
+                    f"As prévias de criação anteriores foram juntadas a esta: agora há UMA única prévia na conversa com "
                     f"todas as {len(all_tasks)} tarefas (as anteriores foram apagadas). Diga ao usuário que basta um "
                     "✅ nessa prévia; não fale em várias prévias e não proponha de novo as tarefas anteriores.")
                 out = json.dumps(res, ensure_ascii=False)
@@ -972,8 +1010,8 @@ MSG_FILE_DATA = (
 )
 
 
-def _dm_check() -> str | None:
-    """Mesma pré-checagem do áudio: só DM do Discord e autor vinculado ao Prisma."""
+def _linked_check() -> str | None:
+    """Pré-checagem dos arquivos: Discord (DM, canal ou tópico, DP6) e autor vinculado ao Prisma."""
     check = _request("whoami", {})
     if not check.get("ok"):
         return _out(check if check.get("code") else {"ok": False, "code": "not_linked", "error": "Conta não vinculada ao Prisma."})
@@ -981,7 +1019,7 @@ def _dm_check() -> str | None:
 
 
 def ler_arquivo(args: dict, **_kw) -> str:
-    if err := _dm_check():
+    if err := _linked_check():
         return err
     try:
         path = _files.resolve_cached(_str(args, "caminho") or "")
@@ -999,7 +1037,7 @@ def ler_arquivo(args: dict, **_kw) -> str:
 
 
 def registrar_arquivo(args: dict, **_kw) -> str:
-    if err := _dm_check():
+    if err := _linked_check():
         return err
     try:
         path = _files.resolve_cached(_str(args, "caminho") or "")
@@ -1016,7 +1054,7 @@ def registrar_arquivo(args: dict, **_kw) -> str:
 
 
 def gerar_arquivo(args: dict, **_kw) -> str:
-    if err := _dm_check():
+    if err := _linked_check():
         return err
     fmt = (_str(args, "formato") or "").lower()
     title = _str(args, "titulo") or ""
@@ -1032,16 +1070,16 @@ def gerar_arquivo(args: dict, **_kw) -> str:
     path = _files.save_generated(data, filename)
     _, _, user_id = _session()
     try:
-        _upload_file(_dm_channel(user_id), filename, data, _files.MIME[fmt], f"Arquivo gerado: **{filename}**")
+        _upload_file(_conversation_channel(user_id), filename, data, _files.MIME[fmt], f"Arquivo gerado: **{filename}**")
     except DiscordError:
-        return _out({"ok": False, "code": "dm_failed", "error": "Gerei o arquivo, mas não consegui enviá-lo na DM. Tente de novo."})
+        return _out({"ok": False, "code": "post_failed", "error": "Gerei o arquivo, mas não consegui enviá-lo na conversa. Tente de novo."})
     return _out({"ok": True, "arquivo": filename, "bytes": len(data), "caminho": str(path),
-                 "instrucao": "O arquivo já foi enviado na DM; não cole o conteúdo de novo. Para anexá-lo a uma tarefa, "
-                              "use prisma_anexar_arquivo com este caminho."})
+                 "instrucao": "O arquivo já foi enviado nesta conversa; não cole o conteúdo de novo. Para anexá-lo a uma "
+                              "tarefa, use prisma_anexar_arquivo com este caminho."})
 
 
 def anexar_arquivo(args: dict, **_kw) -> str:
-    if err := _dm_check():
+    if err := _linked_check():
         return err
     try:
         path = _files.resolve_cached(_str(args, "caminho") or "")
@@ -1065,44 +1103,51 @@ def _schema(name: str, description: str, properties: dict, required: list[str] |
 
 
 _UUID = {"type": "string", "description": "UUID retornado por outra ferramenta do Prisma."}
-_DM_NOTE = " Só funciona em DM; o Prisma devolve apenas o que o próprio usuário pode ver."
+_NOTE = " Funciona na DM e nos canais em que o bot é chamado; o Prisma devolve apenas o que o próprio usuário pode ver."
+_PROJECT_NOTE = (" Ao citar um projeto para o usuário, use sempre o rótulo 'Projeto - Cliente' (campo label ou project),"
+                 " nunca só o nome.")
 
 TOOLS = [
     ("prisma_listar_projetos", listar_projetos, "📁", _schema(
         "prisma_listar_projetos",
-        "Lista os projetos do Prisma visíveis ao usuário (id, nome, status, datas)." + _DM_NOTE, {})),
+        "Lista os projetos do Prisma visíveis ao usuário: id, label ('Projeto - Cliente'), nome, cliente, status e "
+        "datas." + _PROJECT_NOTE + _NOTE, {})),
     ("prisma_listar_tarefas", listar_tarefas, "🗂️", _schema(
         "prisma_listar_tarefas",
-        "Lista as tarefas de um projeto do Prisma (id, título, status, responsável, prazo)." + _DM_NOTE,
+        "Lista as tarefas de um projeto do Prisma: id, título, status, responsável (assignee_name = nome, "
+        "assignee_id = id), responsável no cliente (client_owner) e prazo. Ao mostrar tarefas, diga o responsável "
+        "pelo nome (assignee_name), nunca pelo id; sem responsável, diga 'sem responsável'." + _PROJECT_NOTE + _NOTE,
         {"project_id": {**_UUID, "description": "id do projeto (de prisma_listar_projetos)."}},
         ["project_id"])),
     ("prisma_ver_tarefa", ver_tarefa, "📝", _schema(
         "prisma_ver_tarefa",
-        "Mostra os detalhes de uma tarefa do Prisma." + _DM_NOTE,
+        "Mostra os detalhes de uma tarefa do Prisma, com o nome do responsável (assignee_name), o responsável no "
+        "cliente (client_owner) e o projeto no formato 'Projeto - Cliente' (project)." + _NOTE,
         {"task_id": {**_UUID, "description": "id da tarefa (de prisma_listar_tarefas)."}},
         ["task_id"])),
     ("prisma_listar_membros", listar_membros, "📇", _schema(
         "prisma_listar_membros",
         "Lista os membros de um projeto do Prisma (id, nome, papel no projeto), incluindo o gerente. Use para "
-        "obter o assignee_id a partir do nome do responsável." + _DM_NOTE,
+        "obter o assignee_id a partir do nome do responsável." + _NOTE,
         {"project_id": {**_UUID, "description": "id do projeto (de prisma_listar_projetos)."}},
         ["project_id"])),
     ("prisma_buscar_contexto", buscar_contexto, "🔎", _schema(
         "prisma_buscar_contexto",
-        "Busca em atas, transcrições e anotações dos projetos do Prisma (até 10 trechos)." + _DM_NOTE,
+        "Busca em atas, transcrições e anotações dos projetos do Prisma (até 10 trechos); cada trecho traz o "
+        "projeto no formato 'Projeto - Cliente' (project)." + _NOTE,
         {"query": {"type": "string", "description": "Termos da busca, em português (até 200 caracteres)."},
          "project_id": {**_UUID, "description": "Opcional: restringe a um projeto."}},
         ["query"])),
     ("prisma_buscar_conhecimento", buscar_conhecimento, "📚", _schema(
         "prisma_buscar_conhecimento",
-        "Busca metodologias e modelos publicados na base de conhecimento do Prisma." + _DM_NOTE,
+        "Busca metodologias e modelos publicados na base de conhecimento do Prisma." + _NOTE,
         {"query": {"type": "string", "description": "Termos da busca, em português (até 200 caracteres)."}},
         ["query"])),
 ]
 
 _WRITE_NOTE = (
-    " Não grava nada sozinha: posta na DM uma prévia do que será gravado, com ✅ e ❌. Só depois de o usuário"
-    " confirmar (reação ✅ ou resposta 'sim'), chame prisma_confirmar_acao." + _DM_NOTE
+    " Não grava nada sozinha: posta nesta conversa (DM ou canal) uma prévia do que será gravado, com ✅ e ❌. Só"
+    " depois de o autor do pedido confirmar (reação ✅ ou resposta 'sim'), chame prisma_confirmar_acao." + _NOTE
 )
 _DATE = {"type": "string", "description": "Data no formato AAAA-MM-DD."}
 _TASK_PROPS = {
@@ -1177,19 +1222,19 @@ TOOLS += [
         "prisma_confirmar_acao",
         "Grava uma alteração proposta depois que o usuário a confirmou (reagiu ✅ à prévia ou respondeu 'sim'). "
         "O plugin confere a confirmação direto no Discord: sem ela, nada é gravado. Se o usuário recusou, a ação "
-        "é cancelada." + _DM_NOTE,
+        "é cancelada." + _NOTE,
         {"pending_id": {**_UUID, "description": "pending_id devolvido pela ferramenta que propôs a alteração."}},
         ["pending_id"])),
     ("prisma_cancelar_acao", cancelar_acao, "✖️", _schema(
         "prisma_cancelar_acao",
-        "Cancela uma alteração proposta (o usuário recusou ou pediu mudanças). Nada é gravado." + _DM_NOTE,
+        "Cancela uma alteração proposta (o usuário recusou ou pediu mudanças). Nada é gravado." + _NOTE,
         {"pending_id": {**_UUID, "description": "pending_id devolvido pela ferramenta que propôs a alteração."}},
         ["pending_id"])),
 ]
 
-_PATH = {"type": "string", "description": "Caminho do arquivo recebido na DM (o que o Hermes informou ao receber o anexo) "
+_PATH = {"type": "string", "description": "Caminho do arquivo recebido na conversa (o que o Hermes informou ao receber o anexo) "
                                           "ou devolvido por prisma_gerar_arquivo."}
-_FILE_NOTE = " Lê TXT, MD, CSV, PDF, DOCX, XLSX, HTML e BPMN." + _DM_NOTE
+_FILE_NOTE = " Lê TXT, MD, CSV, PDF, DOCX, XLSX, HTML e BPMN." + _NOTE
 
 TOOLS += [
     ("prisma_ler_arquivo", ler_arquivo, "📄", _schema(
@@ -1206,7 +1251,7 @@ TOOLS += [
         ["caminho"])),
     ("prisma_registrar_arquivo", registrar_arquivo, "🗂️", _schema(
         "prisma_registrar_arquivo",
-        "Propõe gravar o texto literal de um arquivo recebido na DM (ata em PDF/Word, por exemplo) no contexto de "
+        "Propõe gravar o texto literal de um arquivo recebido na conversa (ata em PDF/Word, por exemplo) no contexto de "
         "um projeto. O texto não é passado como argumento: o plugin extrai do arquivo. Save file to project context, "
         "registrar arquivo, salvar documento, ata pdf, anexo." + _WRITE_NOTE,
         {"caminho": _PATH,
@@ -1218,11 +1263,11 @@ TOOLS += [
         ["caminho", "project_id", "title"])),
     ("prisma_gerar_arquivo", gerar_arquivo, "🧾", _schema(
         "prisma_gerar_arquivo",
-        "Gera um arquivo e envia na DM do usuário. txt, md, html, docx e pdf: envie 'conteudo' em Markdown "
+        "Gera um arquivo e envia nesta conversa (DM ou canal). txt, md, html, docx e pdf: envie 'conteudo' em Markdown "
         "(# títulos, - listas, 1. numeradas, | tabelas |, **negrito**). xlsx: envie 'tabela'. bpmn: envie 'processo' "
         "(BPMN 2.0 com diagrama, uma pool com uma raia por ator, abre no Camunda e no Bizagi). Não grava nada no "
         "Prisma. Create file, write document, export, generate pdf word excel html bpmn, gerar arquivo, criar "
-        "documento, planilha, fluxograma." + _DM_NOTE,
+        "documento, planilha, fluxograma." + _NOTE,
         {"formato": {"type": "string", "enum": list(_files.WRITE_FORMATS)},
          "nome": {"type": "string", "description": "Nome do arquivo, sem extensão."},
          "titulo": {"type": "string", "description": "Título do documento (opcional)."},
@@ -1247,7 +1292,7 @@ TOOLS += [
         ["formato", "nome"])),
     ("prisma_anexar_arquivo", anexar_arquivo, "📎", _schema(
         "prisma_anexar_arquivo",
-        "Propõe anexar a uma tarefa do Prisma um arquivo recebido na DM ou gerado por prisma_gerar_arquivo (até 10 MB). "
+        "Propõe anexar a uma tarefa do Prisma um arquivo recebido na conversa ou gerado por prisma_gerar_arquivo (até 10 MB). "
         "Attach file to task, anexar arquivo, upload." + _WRITE_NOTE,
         {"caminho": _PATH, "task_id": {**_UUID, "description": "id da tarefa (de prisma_listar_tarefas)."}},
         ["caminho", "task_id"])),
