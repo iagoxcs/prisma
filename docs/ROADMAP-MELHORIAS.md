@@ -59,6 +59,7 @@ F1 Saúde do projeto · F4 Encerramento com lições aprendidas · F6 Briefing s
 | 21/11/2026 | DP2 (O5) | O custo vem do relatório de uso do provedor de LLM (router da Hostinger), consultado pela rotina. Substituída pela DP3 |
 | 23/11/2026 | DP3 (O5) | O router da Hostinger não tem API de uso (GET /v1/usage devolve 404). O custo é estimado contando os tokens de cada chamada (bot, transcrição e rotina) e aplicando a tabela de preços mantida no repositório; o valor cobrado em créditos pela Hostinger pode diferir |
 | 23/11/2026 | DP4 | Bot (Hermes) e rotina passam do router da Hostinger para a API do Claude (Anthropic), mantendo os modelos: Sonnet 5.5 no bot e Haiku 5.5 na rotina. Os nomes dos modelos mudam para `claude-sonnet-5-5` e `claude-haiku-5-5` (no router eram `claude-sonnet-5.5` e `claude-haiku-5.5`); a tabela de preços da fatia (d) da O5 precisa dos dois. A transcrição de voz continua no router (Gemini), porque a API do Claude não transcreve áudio |
+| 23/11/2026 | DP5 | A transcrição de voz sai do router (sem créditos) para a API de transcrição da OpenAI (`gpt-4o-transcribe`), com chave dedicada `PRISMA_STT_OPENAI_KEY`. As travas continuam: só DM e só conta vinculada; o áudio de quem não passa nelas não sai da VPS. Com isso o router da Hostinger deixa de ser usado |
 
 ## 4. Decisões pendentes
 
