@@ -370,14 +370,18 @@ function ProjectSkeleton() {
   );
 }
 
-// Cliente, status e período do projeto (alimentam o cronograma de portfólio) e canal do Discord (rotina diária).
-// Salvamento automático: cada alteração é gravada após uma pausa, sem botão de salvar.
-type ProjectForm = { client_id: string; status: ProjectStatus; start: string; end: string; channel: string };
+// Nome (P13), cliente, status e período do projeto (alimentam o cronograma de portfólio) e canal do Discord
+// (rotina diária). Salvamento automático: cada alteração é gravada após uma pausa, sem botão de salvar.
+type ProjectForm = { name: string; client_id: string; status: ProjectStatus; start: string; end: string; channel: string };
 type ChannelProject = Pick<Project, "id" | "name" | "status">;
 const NEW_CLIENT = "__novo__";
 const CHANNEL_RE = /^[0-9]{17,20}$/;
+const NAME_MAX = 200;
 
 function projectFormError(f: ProjectForm): string | null {
+  const name = f.name.trim();
+  if (!name) return "Informe o nome do projeto para salvar.";
+  if (name.length > NAME_MAX) return `O nome do projeto deve ter até ${NAME_MAX} caracteres.`;
   const channel = f.channel.trim();
   if (channel && !CHANNEL_RE.test(channel)) return "Informe só os números do ID do canal (17 a 20 dígitos) para salvar.";
   if (f.start && f.end && f.end < f.start) return "O fim não pode ser anterior ao início.";
@@ -388,6 +392,7 @@ function ProjectEditor({ project, onSaved }: { project: Project; onSaved: () => 
   const { can } = useAuth();
   const canManageClients = can("clients.manage");
   const [form, setForm] = useState<ProjectForm>(() => ({
+    name: project.name,
     client_id: project.client_id ?? "",
     status: project.status,
     start: project.start_date ?? "",
@@ -432,6 +437,7 @@ function ProjectEditor({ project, onSaved }: { project: Project; onSaved: () => 
     valid: (f) => projectFormError(f) === null,
     save: async (f, prev) => {
       const payload = {
+        name: f.name.trim(),
         client_id: f.client_id || null,
         status: f.status,
         start_date: f.start || null,
@@ -439,6 +445,7 @@ function ProjectEditor({ project, onSaved }: { project: Project; onSaved: () => 
         discord_channel_id: f.channel.trim() || null,
       };
       const before = {
+        name: prev.name.trim(),
         client_id: prev.client_id || null,
         status: prev.status,
         start_date: prev.start || null,
@@ -490,6 +497,11 @@ function ProjectEditor({ project, onSaved }: { project: Project; onSaved: () => 
           if (!e.currentTarget.contains(e.relatedTarget as Node | null)) void autosave.flush();
         }}
       >
+        {/* Linha própria: o nome costuma ser mais longo que os outros campos. */}
+        <label className="w-full max-w-xl space-y-1.5">
+          <span className="block text-[0.8125rem] font-medium text-muted-foreground">Nome</span>
+          <Input required maxLength={NAME_MAX} value={form.name} onChange={(e) => set("name", e.target.value)} />
+        </label>
         <label className="space-y-1.5">
           <span className="block text-[0.8125rem] font-medium text-muted-foreground">Cliente</span>
           <Select
