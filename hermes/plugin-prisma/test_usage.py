@@ -126,23 +126,36 @@ class BufferTests(unittest.TestCase):
 
 
 class TranscriptionUsageTests(unittest.TestCase):
-    def test_transcription_counts_usage(self):
+    def _transcribe(self, reply: bytes, prompt=None):
         p._USAGE.clear()
         self.addCleanup(p._USAGE.clear)
         response = mock.MagicMock()
-        response.__enter__.return_value.read.return_value = (
-            b'{"model": "gemini-3.5-flash", "usage": {"prompt_tokens": 900, "completion_tokens": 40},'
-            b' "choices": [{"message": {"content": "bom dia"}}]}')
-        with mock.patch.object(p, "_request", return_value={"ok": True}), \
-                mock.patch.object(p, "_session", return_value=("discord", "dm", "123")), \
-                mock.patch.object(p, "_env", return_value="chave"), \
-                mock.patch.object(p, "_to_mp3", return_value=__file__), \
-                mock.patch.object(p, "_remember_transcript"), \
-                mock.patch.object(p, "_today_brt", return_value=TODAY), \
-                mock.patch.object(p.urllib.request, "urlopen", return_value=response):
-            out = p.transcribe_voice("audio.ogg")
+        response.__enter__.return_value.read.return_value = reply
+        with mock.patch.object(p, "_request", return_value={"ok": True}),                 mock.patch.object(p, "_session", return_value=("discord", "dm", "123")),                 mock.patch.object(p, "_env", return_value="chave") as env,                 mock.patch.object(p, "_to_mp3", return_value=__file__),                 mock.patch.object(p, "_remember_transcript") as remember,                 mock.patch.object(p, "_today_brt", return_value=TODAY),                 mock.patch.object(p.urllib.request, "urlopen", return_value=response) as urlopen:
+            out = p.transcribe_voice("audio.ogg", prompt=prompt)
+        return out, urlopen.call_args.args[0], env, remember
+
+    def test_transcription_calls_openai_and_counts_usage(self):
+        out, req, env, remember = self._transcribe(
+            b'{"text": " bom dia ", "usage": {"type": "tokens", "input_tokens": 900, "output_tokens": 40,'
+            b' "total_tokens": 940}}', prompt="Prisma, Geolab")
         self.assertTrue(out["success"], out)
-        self.assertEqual(p._USAGE[(TODAY, "transcricao", "gemini-3.5-flash")], [1, 900, 40, 0, 0])
+        self.assertEqual(out["transcript"], "bom dia")
+        remember.assert_called_once_with("123", "bom dia")
+        env.assert_any_call("PRISMA_STT_OPENAI_KEY")
+        self.assertEqual(req.full_url, "https://api.openai.com/v1/audio/transcriptions")
+        self.assertEqual(req.get_header("Authorization"), "Bearer chave")
+        self.assertTrue(req.get_header("Content-type").startswith("multipart/form-data; boundary=prisma"))
+        body = req.data
+        for part in (b'name="model"\r\n\r\ngpt-4o-transcribe\r\n', b'name="language"\r\n\r\npt\r\n',
+                     b'name="prompt"\r\n\r\nVocabul', b'name="file"; filename="audio.mp3"'):
+            self.assertIn(part, body)
+        self.assertEqual(p._USAGE[(TODAY, "transcricao", "gpt-4o-transcribe")], [1, 900, 40, 0, 0])
+
+    def test_empty_transcription_is_a_failure(self):
+        out, _, _, remember = self._transcribe(b'{"text": "  "}')
+        self.assertFalse(out["success"])
+        remember.assert_not_called()
 
 
 if __name__ == "__main__":
