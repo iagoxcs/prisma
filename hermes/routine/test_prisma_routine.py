@@ -113,16 +113,48 @@ class HelperTests(unittest.TestCase):
         self.assertEqual(list(groups), [CH_SHARED, CH_SOLO])
         self.assertEqual([p["project_id"] for p in groups[CH_SHARED]], ["p-a", "p-b"])
 
-    def test_summarize_prompt_names_every_project(self):
-        sent = {}
+    @staticmethod
+    def _claude_reply(text, stop="end_turn"):
+        # Resposta da API de Mensagens: o bloco de pensamento vem antes do texto.
+        return {"stop_reason": stop, "content": [{"type": "thinking", "thinking": "", "signature": "s"},
+                                                 {"type": "text", "text": text}]}
+
+    def _summarize_with(self, replies):
+        calls = []
 
         def fake_http(method, url, headers, body, timeout=60):
-            sent.update(body)
-            return {"choices": [{"message": {"content": '{"resumo": "ok", "decisoes": [], "pendencias": []}'}}]}
+            calls.append({"url": url, "headers": headers, "body": body})
+            return replies[min(len(calls), len(replies)) - 1]
 
-        with mock.patch.object(r, "http_json", fake_http), mock.patch.dict("os.environ", {"NEXOS_API_KEY": "x"}):
-            r.summarize(["Projeto A", "Projeto B"], DAY, "[10:00] ana: oi")
-        self.assertIn("Projetos do canal: Projeto A; Projeto B", sent["messages"][1]["content"])
+        with mock.patch.object(r, "http_json", fake_http), mock.patch.dict("os.environ", {"ANTHROPIC_API_KEY": "k"}):
+            try:
+                return r.summarize(["Projeto A", "Projeto B"], DAY, "[10:00] ana: oi"), calls
+            except r.RoutineError as e:
+                return e, calls
+
+    def test_summarize_calls_claude_messages_api(self):
+        out, calls = self._summarize_with([self._claude_reply('{"resumo": "ok", "decisoes": [], "pendencias": []}')])
+        self.assertEqual(out["resumo"], "ok")
+        sent = calls[0]
+        self.assertEqual(sent["url"], "https://api.anthropic.com/v1/messages")
+        self.assertEqual(sent["headers"], {"x-api-key": "k", "anthropic-version": "2026-10-21"})
+        self.assertEqual(sent["body"]["model"], "claude-haiku-5-5")
+        self.assertEqual(sent["body"]["system"], r.SYSTEM_PROMPT)
+        self.assertNotIn("temperature", sent["body"])
+        self.assertEqual([m["role"] for m in sent["body"]["messages"]], ["user"])
+        self.assertIn("Projetos do canal: Projeto A; Projeto B", sent["body"]["messages"][0]["content"])
+
+    def test_summarize_refusal_is_an_error_code(self):
+        out, calls = self._summarize_with([{"stop_reason": "refusal", "content": []}])
+        self.assertIsInstance(out, r.RoutineError)
+        self.assertEqual(out.code, "llm_recusou")
+        self.assertEqual(len(calls), 2)
+
+    def test_summarize_retries_once_on_invalid_json(self):
+        out, calls = self._summarize_with([self._claude_reply("sem json"),
+                                           self._claude_reply('{"resumo": "ok", "decisoes": [], "pendencias": []}')])
+        self.assertEqual(out["resumo"], "ok")
+        self.assertEqual(len(calls), 2)
 
 
 if __name__ == "__main__":

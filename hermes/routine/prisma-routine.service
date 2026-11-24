@@ -5,7 +5,7 @@ After=network-online.target
 
 [Service]
 Type=oneshot
-# Segredos só neste arquivo (root, 600): ROUTINE_SECRET, DISCORD_BOT_TOKEN, NEXOS_API_KEY,
+# Segredos só neste arquivo (root, 600): ROUTINE_SECRET, DISCORD_BOT_TOKEN, ANTHROPIC_API_KEY,
 # OPS_CHANNEL_ID, DISCORD_GUILD_ID e ROUTINE_IGNORE_CHANNELS.
 EnvironmentFile=/etc/prisma-routine.env
 ExecStart=/usr/bin/python3 -I /opt/prisma-routine/prisma_routine.py
