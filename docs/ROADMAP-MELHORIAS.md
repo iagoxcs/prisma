@@ -43,7 +43,7 @@ Legenda: ✅ feito · 🟡 parcial · ⬜ pendente · ⛔ aguarda decisão (seç
 | 33 | 7 | P12 | Memórias dos Claudes pessoais na Base de Conhecimento (DP7) | Prompt em docs/prompts/importar-memorias-claude.md: extrai só o conhecimento de trabalho compartilhável, no formato dos itens de metodologia (título, tags, resumo, conteúdo), com seção "Para revisar"; cadastro e publicação manuais na base | — | ✅ | #89 |
 | 34 | 7 | P13 | Nome do projeto editável e "Projeto - Cliente" no assistente | Fatias: (a) ai-gateway: list_projects devolve client e label ("Projeto - Cliente", ou só o nome sem cliente ou sem clients.view); get_task e search_context trazem o rótulo do projeto; prévias citam o rótulo; (b) plugin: o LLM cita projetos sempre pelo label; (c) front: campo Nome no Editar projeto, com salvamento automático e nome obrigatório (até 200 caracteres) | — | ✅ | #90, #91, #92 |
 | 35 | 8 | P14 | Conhecimento organizacional | Base de conhecimento ganha o tipo "Conhecimento organizacional", com as funções da metodologia (Markdown importado, resumo, tags, rascunho/publicado, versão, arquivos, busca e search_knowledge do assistente), sem modelos nem planilha. Fatias: (a) schema; (b) interface | — | ✅ | #94 |
-| 36 | 8 | P15 | Menu enxuto | Notificações sai do menu (fica o sino); Conhecimento e Clientes viram abas de Configurações, visível a todo interno com abas por acesso; /conhecimento/ e /clientes/ redirecionam | P14 | ✅ | #95 |
+| 36 | 8 | P15 | Menu enxuto | Notificações sai do menu (fica o sino); Conhecimento e Clientes viram abas de Configurações, visível a todo interno com abas por acesso; /conhecimento/ e /clientes/ redirecionam | P14 | ✅ | #96 |
 
 ## 2. Reprovados (não implementar)
 
