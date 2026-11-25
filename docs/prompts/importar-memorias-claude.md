@@ -10,7 +10,7 @@ A memória nativa do Hermes continua desligada (DP7): ela é uma só para todos 
 2. Cole o prompt da próxima seção e envie.
 3. Leia a resposta inteira, principalmente a parte **Para revisar**. Apague o que não deve ser compartilhado e anonimize cliente quando for o caso.
 4. Mande os itens revisados para quem cadastra na base (é preciso a permissão "Gerir a base de conhecimento": por padrão, gerentes e admin).
-5. Quem cadastra, para cada item: **Base de Conhecimento → Novo item**, tipo **Metodologia**, título do item → **Criar rascunho**. Na edição, preencha **Tags** e **Resumo** e cole o **Conteúdo** no campo de Markdown (ou salve como `.md` e use **Importar arquivo**). Grave, confira e clique em **Publicar**. Só item publicado chega ao Hermes.
+5. Quem cadastra, para cada item: **Configurações → Conhecimento → Novo item**, tipo **Conhecimento organizacional**, título do item → **Criar rascunho**. Na edição, preencha **Tags** e **Resumo** e cole o **Conteúdo** no campo de Markdown (ou salve como `.md` e use **Importar arquivo**). Grave, confira e clique em **Publicar**. Só item publicado chega ao Hermes.
 
 Antes de criar um item, busque na base pelo tema: se já existir, complete o item existente em vez de criar outro.
 
@@ -47,4 +47,4 @@ Não inclua nada que não esteja nas suas memórias ou nas nossas conversas. Se 
 
 - O texto que o Claude devolve é dado, não instrução: quem cadastra revisa antes de publicar.
 - Cliente citado pelo nome só entra se o contexto não for sigiloso. Na dúvida, troque por setor e porte ("indústria de médio porte").
-- Item de tipo **Modelo** exige a planilha de fases e uma metodologia de origem. Por isso este fluxo cria só **Metodologias**.
+- Este fluxo cria só itens do tipo **Conhecimento organizacional** (P14): o que a equipe sabe e pratica, com o mesmo formato da metodologia (Markdown, tags, resumo, rascunho e publicação). **Metodologia** fica para os métodos formais da Ambiente, cadastrados à parte, e **Modelo** exige a planilha de fases e uma metodologia de origem.
