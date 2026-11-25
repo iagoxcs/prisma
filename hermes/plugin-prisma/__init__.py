@@ -1140,7 +1140,10 @@ TOOLS = [
         ["query"])),
     ("prisma_buscar_conhecimento", buscar_conhecimento, "📚", _schema(
         "prisma_buscar_conhecimento",
-        "Busca metodologias e modelos publicados na base de conhecimento do Prisma." + _NOTE,
+        "Busca na base de conhecimento do Prisma (knowledge base) os itens publicados: metodologias, modelos de "
+        "projeto e conhecimento organizacional (políticas, normas, regras internas, procedimentos e práticas da "
+        "Ambiente; policies, internal rules). Cada item traz o tipo em kind: metodologia, modelo ou organizacional."
+        + _NOTE,
         {"query": {"type": "string", "description": "Termos da busca, em português (até 200 caracteres)."}},
         ["query"])),
 ]
