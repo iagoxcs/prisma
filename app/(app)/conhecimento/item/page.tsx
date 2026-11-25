@@ -127,7 +127,7 @@ function ItemDetalhe() {
           </header>
           {i.kind === "modelo" && <ModelTemplate item={i} />}
           {i.body ? (
-            <section className="space-y-2" aria-label={i.kind === "modelo" ? "Orientações" : "Conteúdo da metodologia"}>
+            <section className="space-y-2" aria-label={i.kind === "modelo" ? "Orientações" : i.kind === "metodologia" ? "Conteúdo da metodologia" : "Conteúdo"}>
               {i.kind === "modelo" && <h2 className="text-lg font-semibold">Orientações</h2>}
               <div className="surface-card space-y-3 p-5 text-[0.9375rem]">
                 <MarkdownView>{i.body}</MarkdownView>
@@ -137,7 +137,7 @@ function ItemDetalhe() {
               )}
             </section>
           ) : (
-            i.kind === "metodologia" && <p className="text-sm text-muted-foreground">Sem conteúdo. Importe o arquivo Markdown da metodologia.</p>
+            i.kind !== "modelo" && <p className="text-sm text-muted-foreground">Sem conteúdo. Importe o arquivo Markdown na edição.</p>
           )}
         </article>
       )}

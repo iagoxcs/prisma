@@ -192,14 +192,16 @@ export const DOC_CATEGORY_LABEL: Record<DocCategory, string> = {
   outros: "Outros",
 };
 
-// Base de Conhecimento: metodologias (Markdown) e modelos de projeto vinculados (planilha de fases).
-export type KnowledgeKind = "metodologia" | "modelo";
+// Base de Conhecimento: metodologias (Markdown), modelos de projeto vinculados (planilha de fases) e
+// conhecimento organizacional (Markdown, como a metodologia, sem modelos).
+export type KnowledgeKind = "metodologia" | "modelo" | "organizacional";
 export type KnowledgeStatus = "rascunho" | "publicado";
 export type PrismaStage = "processos" | "resultados" | "indicadores" | "sistemas" | "melhoria" | "alinhamento";
 
 export const KNOWLEDGE_KIND_LABEL: Record<KnowledgeKind, string> = {
   metodologia: "Metodologia",
   modelo: "Modelo",
+  organizacional: "Conhecimento organizacional",
 };
 
 export const KNOWLEDGE_STATUS_LABEL: Record<KnowledgeStatus, string> = {
@@ -225,7 +227,7 @@ export interface KnowledgeItem {
   prisma_stage: PrismaStage | null;
   tags: string[];
   summary: string | null;
-  body: string | null; // Markdown (metodologia)
+  body: string | null; // Markdown (metodologia, organizacional; orientações no modelo)
   source_file_name: string | null; // .md de origem do corpo
   template_csv: string | null; // planilha de fases (modelo), no formato da importação de tarefas
   template_file_name: string | null;
