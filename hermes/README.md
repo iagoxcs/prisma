@@ -38,6 +38,8 @@ Depois, reinicie o container (`docker compose restart` em `/docker/hermes-agent-
 
 No `config.yaml`, `discord.dm_role_auth_guild` aponta para o servidor do Prisma. Assim quem tem o papel **Prisma IA** consegue falar com o bot por DM; sem essa opção, DMs aceitam só os IDs de `DISCORD_ALLOWED_USERS`.
 
+Canais (DP6, 25/11/2026): no `data/.env` do Hermes, `DISCORD_REQUIRE_MENTION=true` continua e a linha `DISCORD_ALLOWED_CHANNELS` fica comentada. Assim o bot responde em qualquer canal do servidor quando chamado com @menção (até então, só no canal `1570163994159751409`). Para voltar a restringir, descomente a linha com os IDs dos canais (separados por vírgula) e reinicie o container. Backup da configuração anterior e do plugin 0.9.0 em `/docker/hermes-agent-iipr-backup-20261125/`.
+
 ## `skills/`
 
 Skills do Hermes: instruções em Markdown (`SKILL.md` com frontmatter `name`, `description`, `metadata.hermes.tags`) que o agente lista e abre com `skills_list` e `skill_view`. Cada skill fica em `skills/<categoria>/<nome>/SKILL.md`; as do Prisma usam a categoria `prisma`.
