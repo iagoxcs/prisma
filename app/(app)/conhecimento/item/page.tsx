@@ -29,7 +29,7 @@ type ModelRow = Pick<KnowledgeItem, "id" | "title" | "status" | "summary">;
 
 function BackLink() {
   return (
-    <Link href="/conhecimento/" className="-ml-1 inline-flex min-h-11 items-center gap-1.5 rounded-md px-1 text-sm font-medium text-muted-foreground hover:text-foreground">
+    <Link href="/configuracoes/?tab=conhecimento" className="-ml-1 inline-flex min-h-11 items-center gap-1.5 rounded-md px-1 text-sm font-medium text-muted-foreground hover:text-foreground">
       <ArrowLeft className="size-4" strokeWidth={1.75} aria-hidden /> Base de conhecimento
     </Link>
   );
@@ -84,7 +84,7 @@ function ItemDetalhe() {
             key={i.updated_at}
             item={i}
             onSaved={item.reload}
-            onDeleted={() => router.push("/conhecimento/")}
+            onDeleted={() => router.push("/configuracoes/?tab=conhecimento")}
             onCancel={() => setEditing(false)}
           />
         </>

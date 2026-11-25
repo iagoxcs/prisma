@@ -4,10 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, type ReactNode } from "react";
 import {
-  Bell,
-  BookOpen,
   Briefcase,
-  Building2,
   CalendarRange,
   ChartColumn,
   CircleUser,
@@ -36,11 +33,9 @@ const NAV = [
   { href: "/cronograma/", label: "Cronograma", icon: CalendarRange },
   { href: "/indicadores/", label: "Indicadores", icon: ChartColumn, internalOnly: true },
   { href: "/documentos/", label: "Documentos", icon: FileText, internalOnly: true },
-  { href: "/conhecimento/", label: "Conhecimento", icon: BookOpen, internalOnly: true },
-  { href: "/notificacoes/", label: "Notificações", icon: Bell },
-  { href: "/clientes/", label: "Clientes", icon: Building2, internalOnly: true, perm: "clients.view" },
-  { href: "/configuracoes/", label: "Configurações", icon: Settings, internalOnly: true, adminOnly: true },
-] as { href: string; label: string; icon: typeof Bell; internalOnly?: boolean; adminOnly?: boolean; perm?: Permission }[];
+  // Conhecimento e Clientes são abas de Configurações; Notificações fica só no sino do topo.
+  { href: "/configuracoes/", label: "Configurações", icon: Settings, internalOnly: true },
+] as { href: string; label: string; icon: typeof Settings; internalOnly?: boolean; adminOnly?: boolean; perm?: Permission }[];
 
 // O gate é só UX: a segurança real é o RLS no banco.
 export function AppShell({ children }: { children: ReactNode }) {
@@ -107,8 +102,12 @@ export function AppShell({ children }: { children: ReactNode }) {
   const items = NAV.filter(
     (i) => (!i.internalOnly || !profile.is_external) && (!i.adminOnly || profile.role === "admin") && (!i.perm || can(i.perm)),
   );
-  // A página de um projeto (/projeto/?id=) pertence a "Projetos".
-  const section = pathname.startsWith("/projeto/") ? "/projetos/" : pathname;
+  // A página de um projeto (/projeto/?id=) pertence a "Projetos"; Conhecimento e Clientes, a "Configurações".
+  const section = pathname.startsWith("/projeto/")
+    ? "/projetos/"
+    : /^\/(conhecimento|clientes)(\/|$)/.test(pathname)
+      ? "/configuracoes/"
+      : pathname;
   const isActive = (href: string) => (href === "/" ? section === "/" : section.startsWith(href.replace(/\/$/, "")));
 
   return (
