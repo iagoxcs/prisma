@@ -13,7 +13,7 @@ Regras (H9, N5):
 
 Uso: prisma_routine.py [--date AAAA-MM-DD] [--dry-run]
 Sem --date, resume o dia anterior (o timer roda logo depois da meia-noite, com o dia completo).
-Variáveis: ROUTINE_SECRET, DISCORD_BOT_TOKEN, NEXOS_API_KEY, OPS_CHANNEL_ID, DISCORD_GUILD_ID e,
+Variáveis: ROUTINE_SECRET, DISCORD_BOT_TOKEN, ANTHROPIC_API_KEY, OPS_CHANNEL_ID, DISCORD_GUILD_ID e,
 opcionais, PRISMA_GATEWAY_URL, LLM_BASE_URL, LLM_MODEL, ROUTINE_IGNORE_CHANNELS (IDs separados por vírgula).
 """
 from __future__ import annotations
@@ -35,8 +35,9 @@ DISCORD_EPOCH_MS = 1420070400000
 GATEWAY_URL = os.environ.get(
     "PRISMA_GATEWAY_URL", "https://jipaumhvkldxnmwfdmji.supabase.co/functions/v1/ai-gateway"
 )
-LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "https://router.hostinger.com/v1").rstrip("/")
-LLM_MODEL = os.environ.get("LLM_MODEL", "claude-haiku-5.5")  # DV5: Haiku para os resumos
+LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "https://api.anthropic.com").rstrip("/")
+LLM_MODEL = os.environ.get("LLM_MODEL", "claude-haiku-5-5")  # DV5: Haiku para os resumos
+ANTHROPIC_VERSION = "2026-10-21"
 MAX_TRANSCRIPT_CHARS = 150_000  # limita custo; o excedente mais antigo é cortado
 MAX_BODY_CHARS = 500_000
 USER_AGENT = "DiscordBot (prisma-routine, 1.0)"
@@ -207,25 +208,30 @@ def parse_summary(text: str) -> dict:
 
 def summarize(project_names: list[str], day: date, text: str) -> dict:
     label = "Projeto" if len(project_names) == 1 else "Projetos do canal"
+    # API de Mensagens do Claude. Sem temperature: o Haiku 5.5 e a versão 2026-10-21 só aceitam o padrão.
+    # max_tokens folgado porque o pensamento adaptativo (ligado por padrão no Haiku 5.5) conta nele.
     body = {
         "model": LLM_MODEL,
-        "max_tokens": 2000,
-        "temperature": 0.2,
+        "max_tokens": 16000,
+        "system": SYSTEM_PROMPT,
         "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": f"{label}: {'; '.join(project_names)}\nDia: {day.strftime('%d/%m/%Y')}\n<conversa>\n{text}\n</conversa>"},
         ],
     }
+    headers = {"x-api-key": env("ANTHROPIC_API_KEY"), "anthropic-version": ANTHROPIC_VERSION}
     last: RoutineError | None = None
     for _ in range(2):  # uma nova tentativa se o JSON vier inválido
-        res = http_json("POST", f"{LLM_BASE_URL}/chat/completions",
-                        {"Authorization": f"Bearer {env('NEXOS_API_KEY')}"}, body, timeout=120)
+        res = http_json("POST", f"{LLM_BASE_URL}/v1/messages", headers, body, timeout=300)
         try:
-            content = res["choices"][0]["message"]["content"]  # type: ignore[index]
-            if isinstance(content, list):
-                content = "".join(part.get("text", "") for part in content if isinstance(part, dict))
+            stop = res.get("stop_reason")  # type: ignore[union-attr]
+            if stop == "refusal":
+                raise RoutineError("llm_recusou")
+            if stop == "max_tokens":
+                raise RoutineError("llm_resposta_cortada")
+            # Só os blocos de texto: os de pensamento (thinking) vêm antes e ficam de fora.
+            content = "".join(b.get("text", "") for b in res["content"] if isinstance(b, dict) and b.get("type") == "text")  # type: ignore[index]
             return parse_summary(content)
-        except (KeyError, IndexError, TypeError, ValueError):
+        except (KeyError, IndexError, TypeError, ValueError, AttributeError):
             last = RoutineError("llm_resposta_invalida")
         except RoutineError as e:
             last = e

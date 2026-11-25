@@ -10,7 +10,10 @@
 // Telemetria de uso da IA (O5, DP3): o plugin envia os tokens do bot e da transcrição com record_usage (sem
 // usuário, como resume_previews); a rotina grava os dela com routine_record_usage e lê o resumo do mês com
 // routine_usage_summary. Só contagens de tokens e nome do modelo, nunca conteúdo.
+// Onda 7 (labels.ts): tarefas trazem o nome do responsável (P10) e projetos vêm com o rótulo
+// "Projeto - Cliente" (P13), também nas prévias. O cliente segue a RLS de clients (clients.view).
 import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
+import { embeddedName, labelFromEmbed, projectLabel, withAssigneeNames } from "./labels.ts";
 import { aggregateUsage, parseRange, parseUsageRows, todayBrt, type UsageRow, UsageError, type UsageSource } from "./usage.ts";
 
 const RATE_LIMIT_PER_MIN = 30; // DV7
@@ -84,37 +87,57 @@ function queryArg(args: Args): string {
 
 const cut = (text: string | null) => (text && text.length > EXCERPT ? `${text.slice(0, EXCERPT)}…` : text);
 
+// Nomes dos responsáveis (P10), numa consulta só e com a sessão do usuário (internos veem todos os perfis).
+async function peopleNames(db: SupabaseClient, ids: (string | null | undefined)[]): Promise<Map<string, string>> {
+  const unique = [...new Set(ids.filter((id): id is string => !!id))];
+  if (!unique.length) return new Map();
+  const { data, error } = await db.from("profiles").select("id, name").in("id", unique);
+  if (error) throw error;
+  return new Map((data ?? []).map((p) => [p.id as string, p.name as string]));
+}
+
+// Projeto da tarefa ou do trecho de contexto, para o rótulo "Projeto - Cliente" (P13).
+const PROJECT_EMBED = "projects(name, clients(name))";
+
 // Cada ferramenta: colunas explícitas, sem escrita, sem SQL arbitrário.
 async function runTool(db: SupabaseClient, tool: Tool, args: Args): Promise<unknown[] | Record<string, unknown> | null> {
   switch (tool) {
     case "list_projects": {
       const { data, error } = await db
         .from("projects")
-        .select("id, name, status, start_date, end_date")
+        .select("id, name, status, start_date, end_date, clients(name)")
         .order("name");
       if (error) throw error;
-      return data;
+      return (data ?? []).map(({ clients, ...p }) => {
+        const client = embeddedName(clients);
+        return { id: p.id, label: projectLabel(p.name as string, client), name: p.name, client, status: p.status,
+                 start_date: p.start_date, end_date: p.end_date };
+      });
     }
     case "list_tasks": {
       const projectId = uuidArg(args, "project_id", true)!;
       const { data, error } = await db
         .from("tasks")
-        .select("id, title, status, assignee_id, due_date")
+        .select("id, title, status, assignee_id, client_owner, due_date")
         .eq("project_id", projectId)
         .order("position")
         .limit(200);
       if (error) throw error;
-      return data;
+      const rows = data ?? [];
+      return withAssigneeNames(rows, await peopleNames(db, rows.map((t) => t.assignee_id as string | null)));
     }
     case "get_task": {
       const taskId = uuidArg(args, "task_id", true)!;
       const { data, error } = await db
         .from("tasks")
-        .select("id, project_id, title, description, status, assignee_id, start_date, due_date, concluded_at")
+        .select(`id, project_id, title, description, status, assignee_id, client_owner, start_date, due_date, concluded_at, ${PROJECT_EMBED}`)
         .eq("id", taskId)
         .maybeSingle();
       if (error) throw error;
-      return data;
+      if (!data) return null;
+      const { projects, ...task } = data;
+      const [named] = withAssigneeNames([task], await peopleNames(db, [task.assignee_id as string | null]));
+      return { ...named, project: labelFromEmbed(projects) };
     }
     case "list_members": {
       // Tudo com a sessão do usuário: quem não vê o projeto recebe 404, sem saber se ele existe.
@@ -142,14 +165,14 @@ async function runTool(db: SupabaseClient, tool: Tool, args: Args): Promise<unkn
       const projectId = uuidArg(args, "project_id", false);
       let q = db
         .from("project_context_entries")
-        .select("id, project_id, kind, title, meeting_date, body")
+        .select(`id, project_id, kind, title, meeting_date, body, ${PROJECT_EMBED}`)
         .textSearch("search", query, { config: "portuguese", type: "websearch" })
         .order("meeting_date", { ascending: false, nullsFirst: false })
         .limit(10);
       if (projectId) q = q.eq("project_id", projectId);
       const { data, error } = await q;
       if (error) throw error;
-      return (data ?? []).map((r) => ({ ...r, body: cut(r.body) }));
+      return (data ?? []).map(({ projects, ...r }) => ({ ...r, project: labelFromEmbed(projects), body: cut(r.body as string | null) }));
     }
     case "search_knowledge": {
       const query = queryArg(args);
@@ -339,19 +362,19 @@ function validateOne(action: string, raw: Args): Params {
 
 const notFound = () => new GatewayError(404, "not_found", "Projeto ou tarefa não encontrado, ou sem acesso.");
 
+// Rótulo "Projeto - Cliente" (P13) usado nas prévias.
 async function projectName(db: SupabaseClient, id: string): Promise<string> {
-  const { data, error } = await db.from("projects").select("name").eq("id", id).maybeSingle();
+  const { data, error } = await db.from("projects").select("name, clients(name)").eq("id", id).maybeSingle();
   if (error) throw error;
   if (!data) throw notFound();
-  return data.name;
+  return projectLabel(data.name as string, embeddedName(data.clients));
 }
 
 async function taskRef(db: SupabaseClient, id: string): Promise<{ title: string; project_id: string; project: string }> {
-  const { data, error } = await db.from("tasks").select("title, project_id, projects(name)").eq("id", id).maybeSingle();
+  const { data, error } = await db.from("tasks").select(`title, project_id, ${PROJECT_EMBED}`).eq("id", id).maybeSingle();
   if (error) throw error;
   if (!data) throw notFound();
-  const proj = data.projects as unknown as { name: string } | null;
-  return { title: data.title, project_id: data.project_id, project: proj?.name ?? "?" };
+  return { title: data.title as string, project_id: data.project_id as string, project: labelFromEmbed(data.projects) ?? "?" };
 }
 
 async function personName(db: SupabaseClient, id: string): Promise<string> {

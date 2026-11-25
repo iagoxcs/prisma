@@ -54,7 +54,7 @@ Legenda: ✅ feito · 🟡 parcial · ⬜ pendente
 - 🟡 Etapa 4 — Canal por projeto e rotina diária (em produção desde 13/11/2026; gate: 7 execuções seguidas)
 - ✅ Etapa 5 — Escrita com confirmação (criar e alterar tarefa, comentário interno, registro de contexto; `generate_report` adiado até existir a tela de relatórios). Em 13/11/2026 o código de 6 dígitos deu lugar à prévia confirmada com ✅ ou "sim"
 - 🟡 Arquivos (13/11/2026) — ler e gerar TXT, PDF, Word, Excel, HTML e BPMN no assistente (plugin 0.4.0) e no site (pré-visualização de anexos, importação e exportação); falta instalar o plugin na VPS e validar no Discord
-- 🟡 Etapa 6 — Áudio (mensagens de voz na DM, transcritas pelo Gemini via router; transcrição gravável no contexto do projeto)
+- 🟡 Etapa 6 — Áudio (mensagens de voz na DM, transcritas pela API da OpenAI desde a DP5; transcrição gravável no contexto do projeto)
 - ⬜ Trilha paralela — Migração das chaves de API
 
 ## Fase 5 — Indicadores (RF-23–26)

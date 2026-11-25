@@ -27,7 +27,8 @@ const MD_EXT = acceptFor(["md", "txt", "docx", "pdf", "html"]).split(",");
 const parseTags = (raw: string) => [...new Set(raw.split(",").map((t) => t.trim().toLowerCase()).filter(Boolean))];
 
 // Edição de item (admin/gerente). A RLS é a regra real: update sem linha devolvida = sem permissão.
-// Metodologia: conteúdo em Markdown (importado de .md). Modelo: metodologia de origem + planilha de fases.
+// Metodologia e conhecimento organizacional: conteúdo em Markdown (importado de .md). Modelo: metodologia de
+// origem + planilha de fases.
 export function KnowledgeEditor({
   item,
   onSaved,
@@ -99,7 +100,7 @@ export function KnowledgeEditor({
   function messageFor(code: string | undefined, message: string) {
     if (code === "42501") return NO_PERMISSION;
     if (message.includes("knowledge_items_publish_ready"))
-      return isModel ? "Para publicar o modelo, envie a planilha de fases." : "Para publicar a metodologia, importe ou escreva o conteúdo em Markdown.";
+      return isModel ? "Para publicar o modelo, envie a planilha de fases." : "Para publicar, importe ou escreva o conteúdo em Markdown.";
     if (code === "23503") return "Esta metodologia tem modelos vinculados. Exclua os modelos antes.";
     return message;
   }
@@ -228,7 +229,7 @@ export function KnowledgeEditor({
       <div className="space-y-1.5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <label htmlFor="knowledge-body" className={LABEL}>
-            {isModel ? "Orientações (Markdown, opcional)" : "Conteúdo da metodologia (Markdown)"}
+            {isModel ? "Orientações (Markdown, opcional)" : item.kind === "metodologia" ? "Conteúdo da metodologia (Markdown)" : "Conteúdo (Markdown)"}
             {sourceFile && body && <> · importado de <span className="num">{sourceFile}</span></>}
           </label>
           <Button type="button" variant="outline" onClick={() => mdRef.current?.click()}>

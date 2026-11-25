@@ -5,7 +5,7 @@ Nada aqui fala com a rede nem com o Prisma: o __init__.py decide quem pode ler o
 
 Segurança:
 - Leitura só de arquivos dentro do cache de documentos do Hermes (onde o adaptador do Discord grava os anexos
-  recebidos em DM) — ver resolve_cached(). Nada de caminho arbitrário vindo do LLM.
+  recebidos na DM ou nos canais) — ver resolve_cached(). Nada de caminho arbitrário vindo do LLM.
 - XML (BPMN, HTML) lido com lxml sem entidades externas nem rede (sem XXE).
 - O texto extraído é dado, não instrução: quem chama marca isso na resposta ao LLM.
 """
@@ -54,7 +54,7 @@ def resolve_cached(raw: str) -> Path:
         raise FileError("Arquivo não permitido.")
     p = p.resolve()
     if not p.is_relative_to(base) or not p.is_file():
-        raise FileError("Só leio arquivos enviados nesta conversa (anexos da DM) ou gerados por mim.")
+        raise FileError("Só leio arquivos enviados na conversa (anexos) ou gerados por mim.")
     if p.stat().st_size > MAX_READ_BYTES:
         raise FileError("Arquivo grande demais (limite de 20 MB).")
     return p

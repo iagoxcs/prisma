@@ -222,7 +222,7 @@ Modelo adotado:
 
 ### 8.2 Base de conhecimento
 
-- **No Supabase, sob RLS:** contexto dos projetos em `project_context_entries` e metodologias em `knowledge_items`.
+- **No Supabase, sob RLS:** contexto dos projetos em `project_context_entries` e, em `knowledge_items`, metodologias, modelos de projeto e conhecimento organizacional (políticas, normas internas e práticas da Ambiente, em Markdown).
 - **Git apenas para o Hermes:** a pasta `hermes/` versiona configuração e skills do agente, não conteúdo da base.
 
 ---
