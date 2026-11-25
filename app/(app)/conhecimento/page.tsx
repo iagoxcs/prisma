@@ -120,7 +120,7 @@ export default function ConhecimentoPage() {
       {list.loading && !list.data && <SkeletonList count={4} label="Carregando a base de conhecimento…" />}
       {!list.error && list.data && total === 0 && (
         <p className="surface-card px-4 py-6 text-sm text-muted-foreground">
-          {filtered ? "Nenhum item com esses filtros." : "Nenhum item publicado. Metodologias e modelos aparecem aqui."}
+          {filtered ? "Nenhum item com esses filtros." : "Nenhum item publicado. Metodologias, modelos e conhecimento organizacional aparecem aqui."}
         </p>
       )}
 
