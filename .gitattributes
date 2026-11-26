@@ -2,3 +2,5 @@
 hermes/routine/** text eol=lf
 hermes/plugin-prisma/** text eol=lf
 hermes/skills/** text eol=lf
+# O modelo timbrado (.docx) é binário: sem conversão de fim de linha.
+hermes/plugin-prisma/assets/** binary
