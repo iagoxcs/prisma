@@ -635,9 +635,16 @@ def _bpmn_text(data: bytes) -> str:
         raise FileError("O arquivo não é um BPMN 2.0 (namespace OMG ausente).")
     out: list[str] = []
     names: dict[str, str] = {}
+    unnamed: dict[str, int] = {}  # etapas sem nome viram "Junção 1", "Início sem nome 1"... em vez do ID interno
     for el in root.iter():
-        if isinstance(el.tag, str) and el.get("id"):
-            names[el.get("id")] = (el.get("name") or "").strip() or el.get("id")
+        if not (isinstance(el.tag, str) and el.get("id")):
+            continue
+        name = (el.get("name") or "").strip()
+        if not name and (kind := _BPMN_KIND.get(etree.QName(el).localname)):
+            base = "Junção" if "Gateway" in kind else f"{kind} sem nome"
+            unnamed[base] = unnamed.get(base, 0) + 1
+            name = f"{base} {unnamed[base]}"
+        names[el.get("id")] = name or el.get("id")
     for part in root.findall(".//b:participant", ns):
         out.append(f"Participante (pool): {names.get(part.get('id'))}")
     for proc in root.findall("b:process", ns):
