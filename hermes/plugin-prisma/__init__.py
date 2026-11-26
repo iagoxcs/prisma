@@ -20,6 +20,8 @@ Regras (docs/ARQUITETURA.md):
   transcrição e envia ao gateway (record_usage) a cada 10 minutos. Só números e nome do modelo.
 - Skill citada na mensagem (0.13.0): "@prisma, use a /bpmn-generator ..." com anexo carrega a skill (hook
   pre_gateway_dispatch), porque o menu de barra do Discord não aceita anexo.
+- BPMN com visual do padrão Ambiente (0.14.0): tarefas 200x80 e `nota` por elemento virando anotação de
+  texto ligada à etapa (ex.: o detalhe do GAP), com rotas que desviam das caixas.
 """
 from __future__ import annotations
 
@@ -1275,7 +1277,7 @@ TOOLS += [
         "prisma_gerar_arquivo",
         "Gera um arquivo e envia nesta conversa (DM ou canal). txt, md, html, docx e pdf: envie 'conteudo' em Markdown "
         "(# títulos, - listas, 1. numeradas, | tabelas |, **negrito**). xlsx: envie 'tabela'. bpmn: envie 'processo' "
-        "(BPMN 2.0 com diagrama, uma pool com uma raia por ator, abre no Camunda e no Bizagi). docx com "
+        "(BPMN 2.0 com diagrama, uma pool com uma raia por ator, abre no Camunda e no Bizagi; nome curto em cada elemento e o detalhe, como o GAP, em 'nota', que vira anotação ao lado da etapa). docx com "
         "modelo 'timbrado' sai no papel timbrado oficial da Ambiente (FOR-AMBT-06). Não grava nada no "
         "Prisma. Create file, write document, export, generate pdf word excel html bpmn, letterhead, gerar arquivo, "
         "criar documento, papel timbrado, planilha, fluxograma." + _NOTE,
@@ -1299,8 +1301,10 @@ TOOLS += [
              "elementos": {"type": "array", "items": {"type": "object", "properties": {
                  "id": {"type": "string"},
                  "tipo": {"type": "string", "enum": ["inicio", "tarefa", "gateway", "paralelo", "evento", "subprocesso", "fim"]},
-                 "nome": {"type": "string"},
-                 "raia": {"type": "string"}}}},
+                 "nome": {"type": "string", "description": "Curto (até ~60 caracteres): verbo + objeto + sistema."},
+                 "raia": {"type": "string"},
+                 "nota": {"type": "string", "description": "Opcional: anotação de texto ligada à etapa por linha "
+                                                          "pontilhada (ex.: '⚠️ GAP: ...', observação, regra)."}}}},
              "fluxos": {"type": "array", "items": {"type": "object", "properties": {
                  "de": {"type": "string"}, "para": {"type": "string"},
                  "rotulo": {"type": "string", "description": "Ex.: Sim / Não na saída de um gateway."}}}}}}},
