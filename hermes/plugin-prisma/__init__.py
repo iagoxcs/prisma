@@ -18,6 +18,8 @@ Regras (docs/ARQUITETURA.md):
   HTML, DOCX, PDF, XLSX e BPMN, enviados na própria conversa. Anexar um arquivo a uma tarefa passa pela prévia.
 - Telemetria de uso (O5): conta os tokens do bot (hooks post_api_request e post_auxiliary_call) e da
   transcrição e envia ao gateway (record_usage) a cada 10 minutos. Só números e nome do modelo.
+- Skill citada na mensagem (0.13.0): "@prisma, use a /bpmn-generator ..." com anexo carrega a skill (hook
+  pre_gateway_dispatch), porque o menu de barra do Discord não aceita anexo.
 """
 from __future__ import annotations
 
@@ -1336,9 +1338,78 @@ def _transcription_provider():
     return PrismaSTT()
 
 
+# Skill citada na mensagem (0.13.0, 26/11/2026). O menu de barra do Discord não deixa anexar arquivo, e o
+# Hermes só carrega uma skill quando o texto começa por /<skill>. Isso falha em "@prisma, use a
+# /bpmn-generator ..." e também quando há um .txt pequeno anexado, porque o adaptador do Discord põe o
+# conteúdo do anexo ("[Content of x.txt]: ...") antes do texto digitado. O hook pre_gateway_dispatch olha só
+# o que a pessoa digitou (raw_message.content, já sem a menção ao bot), nunca o anexo nem o histórico do
+# canal, e põe "/<skill>" na frente do texto. O gateway então carrega a skill pelo caminho nativo (que confere
+# as skills desligadas na plataforma) e o anexo segue no mesmo evento.
+_SKILL_TOKEN = re.compile(r"(?<![\w/.:@-])/([A-Za-z0-9][A-Za-z0-9_-]{0,63})(?![\w/-]|\.\w)")
+MAX_CITED_SKILLS = 5  # o Hermes empilha até 5 skills por mensagem
+
+
+def _known_skill_commands() -> set:
+    from agent.skill_commands import get_skill_commands
+    return {str(k).lstrip("/").lower() for k in get_skill_commands()}
+
+
+def _cited_skills(user_text: str, known: set) -> list:
+    found: list = []
+    for m in _SKILL_TOKEN.finditer(user_text or ""):
+        name = m.group(1).lower()
+        for cand in (name, name.replace("_", "-")):
+            if cand in known:
+                if cand not in found:
+                    found.append(cand)
+                break
+        if len(found) >= MAX_CITED_SKILLS:
+            break
+    return found
+
+
+def _skill_rewrite(event, known_fn=_known_skill_commands):
+    """(skills, texto novo) quando a pessoa citou /<skill> e o texto não começa pelo comando; senão None."""
+    if event is None or getattr(event, "internal", False) or not getattr(event, "allow_gateway_control", True):
+        return None
+    platform = getattr(getattr(getattr(event, "source", None), "platform", None), "value", None)
+    if platform != "discord":
+        return None
+    text = getattr(event, "text", None)
+    user_text = getattr(getattr(event, "raw_message", None), "content", None)
+    if not isinstance(text, str) or not isinstance(user_text, str) or "/" not in user_text:
+        return None
+    try:
+        if event.get_command():  # já é um comando: o Hermes cuida sozinho
+            return None
+    except Exception:  # noqa: BLE001
+        pass
+    names = _cited_skills(user_text, known_fn())
+    if not names:
+        return None
+    return names, " ".join("/" + n for n in names) + " " + text
+
+
+def _on_pre_gateway_dispatch(event=None, **_kw):
+    try:
+        result = _skill_rewrite(event)
+    except Exception as e:  # noqa: BLE001 — o hook nunca pode travar a mensagem
+        print(f"prisma: skill citada na mensagem falhou ({type(e).__name__})", flush=True)
+        return None
+    if not result:
+        return None
+    names, new_text = result
+    print("prisma: skill citada na mensagem: " + ", ".join(names), flush=True)
+    return {"action": "rewrite", "text": new_text}
+
+
 def register(ctx) -> None:
     for name, handler, emoji, schema in TOOLS:
         ctx.register_tool(name=name, toolset="prisma", schema=schema, handler=handler, emoji=emoji)
     ctx.register_transcription_provider(_transcription_provider())
+    try:
+        ctx.register_hook("pre_gateway_dispatch", _on_pre_gateway_dispatch)
+    except Exception as e:  # noqa: BLE001 — versão do Hermes sem o hook: só /<skill> no início funciona
+        print(f"prisma: hook pre_gateway_dispatch indisponível ({type(e).__name__})", flush=True)
     _start_resume()
     _start_usage(ctx)
