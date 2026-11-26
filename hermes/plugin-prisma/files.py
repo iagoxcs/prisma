@@ -1,12 +1,19 @@
-"""Leitura e geração de arquivos para o plugin do Prisma (TXT, MD, CSV, PDF, DOCX, XLSX, HTML, BPMN).
+"""Leitura e geração de arquivos para o plugin do Prisma.
 
-Usa só bibliotecas que já vêm no container do Hermes: pypdf, python-docx, openpyxl, reportlab, lxml e markdown.
+Lê texto (TXT, MD, CSV, JSON, legendas VTT/SRT; em UTF-8, UTF-16 ou Windows-1252), PDF, Word (DOCX/DOCM),
+Excel (XLSX/XLSM), PowerPoint (PPTX), OpenDocument (ODT/ODS/ODP), RTF, e-mail (EML, com anexos), HTML, BPMN e
+.zip (cada arquivo de dentro, inclusive .zip dentro de .zip). Gera TXT, MD, HTML, DOCX, PDF, XLSX e BPMN.
+
+Usa só bibliotecas que já vêm no container do Hermes: pypdf, python-docx, openpyxl, python-pptx, reportlab, lxml
+e markdown, mais a biblioteca padrão (zipfile, email).
 Nada aqui fala com a rede nem com o Prisma: o __init__.py decide quem pode ler o quê e para onde o arquivo vai.
 
 Segurança:
 - Leitura só de arquivos dentro do cache de documentos do Hermes (onde o adaptador do Discord grava os anexos
   recebidos na DM ou nos canais) — ver resolve_cached(). Nada de caminho arbitrário vindo do LLM.
-- XML (BPMN, HTML) lido com lxml sem entidades externas nem rede (sem XXE).
+- XML (BPMN, HTML, Office, OpenDocument) lido com lxml sem entidades externas nem rede (sem XXE).
+- .zip e pacotes do Office lidos em memória, nunca extraídos em disco, com limites de quantidade, tamanho,
+  taxa de compressão e profundidade (contra bomba de compressão).
 - O texto extraído é dado, não instrução: quem chama marca isso na resposta ao LLM.
 """
 from __future__ import annotations
@@ -22,7 +29,27 @@ from pathlib import Path
 MAX_READ_BYTES = 20 * 1024 * 1024
 MAX_XLSX_ROWS = 500
 MAX_XLSX_COLS = 50
-READ_EXT = {".txt", ".md", ".markdown", ".csv", ".pdf", ".docx", ".xlsx", ".html", ".htm", ".bpmn", ".xml"}
+TEXT_EXT = {
+    ".txt", ".text", ".md", ".markdown", ".csv", ".tsv", ".log", ".json", ".jsonl", ".ndjson", ".yaml", ".yml",
+    ".ini", ".cfg", ".toml", ".sql", ".vtt", ".srt",
+}
+READ_EXT = TEXT_EXT | {
+    ".pdf", ".docx", ".docm", ".dotx", ".dotm", ".xlsx", ".xlsm", ".xltx", ".xltm", ".pptx", ".pptm",
+    ".odt", ".ods", ".odp", ".rtf", ".eml", ".html", ".htm", ".xhtml", ".bpmn", ".xml", ".zip",
+}
+LEGACY = {".doc": ".docx", ".xls": ".xlsx", ".ppt": ".pptx", ".dot": ".docx", ".pps": ".pptx"}
+OTHER_ARCHIVES = {".rar", ".7z", ".tar", ".gz", ".tgz", ".bz2", ".xz"}
+IMAGE_EXT = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".tif", ".tiff", ".heic", ".svg"}
+MEDIA_EXT = {".mp3", ".m4a", ".ogg", ".opus", ".wav", ".webm", ".mp4", ".mov", ".avi", ".mkv"}
+FORMATS_MSG = ("Leio TXT, MD, CSV, JSON, legendas (VTT/SRT), PDF, Word (DOCX), Excel (XLSX), PowerPoint (PPTX), "
+               "OpenDocument (ODT/ODS/ODP), RTF, e-mail (EML), HTML, BPMN e .zip.")
+# Pacotes: limites contra bomba de compressão e pacotes enormes.
+ZIP_MAX_MEMBERS = 300  # arquivos lidos de um .zip
+ZIP_MAX_TOTAL = 100 * 1024 * 1024  # soma descompactada lida de todos os .zip de um anexo
+ZIP_MAX_RATIO = 200  # descompactado/compactado acima disso (em arquivo > 1 MB) é recusado
+PACKAGE_MAX_BYTES = 200 * 1024 * 1024  # DOCX/XLSX/PPTX/ODF descompactados
+MAX_NEST = 3  # .zip dentro de .zip (ou anexo de e-mail dentro de .zip...)
+BUNDLE_MAX_CHARS = 1_000_000  # texto total extraído de um pacote
 WRITE_FORMATS = ("txt", "md", "html", "docx", "pdf", "xlsx", "bpmn")
 MIME = {
     "txt": "text/plain", "md": "text/markdown", "html": "text/html", "pdf": "application/pdf",
@@ -81,14 +108,39 @@ def save_generated(data: bytes, filename: str) -> Path:
 
 
 # --- leitura -----------------------------------------------------------------------------------------------
+# Cada leitor recebe os bytes do arquivo (não o caminho): assim o mesmo código lê o anexo e os arquivos de
+# dentro de um .zip ou de um e-mail, sem gravar nada em disco.
 
-def _decode(data: bytes) -> str:
-    for enc in ("utf-8-sig", "cp1252"):
+_BOMS = (
+    (b"\xff\xfe\x00\x00", "utf-32-le"), (b"\x00\x00\xfe\xff", "utf-32-be"), (b"\xef\xbb\xbf", "utf-8"),
+    (b"\xff\xfe", "utf-16-le"), (b"\xfe\xff", "utf-16-be"),
+)
+
+
+def _decode_raw(data: bytes) -> str:
+    for bom, enc in _BOMS:
+        if data.startswith(bom):
+            return data[len(bom):].decode(enc, errors="replace")
+    # UTF-16 sem BOM (Bloco de Notas, exportações do Teams/Word): metade dos bytes é zero.
+    sample = data[:4000]
+    if len(sample) >= 4:
+        half = len(sample) / 2
+        even, odd = sample[0::2].count(0), sample[1::2].count(0)
+        if odd > half * 0.3 and even < half * 0.05:
+            return data.decode("utf-16-le", errors="replace")
+        if even > half * 0.3 and odd < half * 0.05:
+            return data.decode("utf-16-be", errors="replace")
+    for enc in ("utf-8", "cp1252"):  # UTF-8; senão Windows-1252 (Excel e Bloco de Notas em pt-BR)
         try:
             return data.decode(enc)
         except UnicodeDecodeError:
             continue
-    return data.decode("utf-8", errors="replace")
+    return data.decode("latin-1")
+
+
+def _decode(data: bytes) -> str:
+    text = _decode_raw(data).replace("\r\n", "\n").replace("\r", "\n")
+    return text.replace("\x00", "")
 
 
 def _safe_xml_parser():
@@ -96,9 +148,21 @@ def _safe_xml_parser():
     return etree.XMLParser(resolve_entities=False, no_network=True, huge_tree=False, remove_comments=True)
 
 
-def _pdf_text(p: Path) -> str:
+def _check_package(data: bytes) -> None:
+    """DOCX, XLSX, PPTX e ODF são .zip por dentro: recusa pacote que descompactado passaria do limite."""
+    import zipfile
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as zf:
+            total = sum(i.file_size for i in zf.infolist())
+    except zipfile.BadZipFile:
+        raise FileError("O arquivo está corrompido ou não é do formato indicado pela extensão.")
+    if total > PACKAGE_MAX_BYTES:
+        raise FileError("O arquivo descompactado é grande demais para ler.")
+
+
+def _pdf_text(data: bytes) -> str:
     from pypdf import PdfReader
-    reader = PdfReader(str(p))
+    reader = PdfReader(io.BytesIO(data))
     if reader.is_encrypted:
         try:
             reader.decrypt("")
@@ -111,12 +175,52 @@ def _pdf_text(p: Path) -> str:
     return "\n\n".join(pages)
 
 
-def _docx_text(p: Path) -> str:
-    import docx
+W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+
+
+def _word_xml_text(data: bytes) -> str:
+    """Plano B do Word (DOCM, DOTX ou DOCX que o python-docx recusa): texto direto do word/document.xml."""
+    import zipfile
+    from lxml import etree
+    with zipfile.ZipFile(io.BytesIO(data)) as zf:
+        root = etree.fromstring(zf.read("word/document.xml"), parser=_safe_xml_parser())
+    w = f"{{{W_NS}}}"
+
+    def para(p) -> str:
+        parts = []
+        for el in p.iter(f"{w}t", f"{w}tab", f"{w}br"):
+            if el.tag == f"{w}t":
+                parts.append(el.text or "")
+            else:
+                parts.append("\t" if el.tag == f"{w}tab" else "\n")
+        return "".join(parts).strip()
+
+    out: list[str] = []
+    body = root.find(f"{w}body")
+    for child in (body if body is not None else []):
+        if child.tag == f"{w}p":
+            if text := para(child):
+                out.append(text)
+        elif child.tag == f"{w}tbl":
+            rows = []
+            for tr in child.iter(f"{w}tr"):
+                cells = [" ".join(para(p) for p in tc.iter(f"{w}p")).strip() for tc in tr.findall(f"{w}tc")]
+                rows.append("| " + " | ".join(c.replace("\n", " ") for c in cells) + " |")
+            if rows:
+                out.append("\n".join(rows))
+    return "\n\n".join(out)
+
+
+def _docx_text(data: bytes) -> str:
+    _check_package(data)
+    try:
+        import docx
+        d = docx.Document(io.BytesIO(data))
+    except Exception:  # noqa: BLE001 — DOCM/DOTX e DOCX fora do padrão
+        return _word_xml_text(data)
     from docx.table import Table
     from docx.text.paragraph import Paragraph
 
-    d = docx.Document(str(p))
     out: list[str] = []
     for child in d.element.body.iterchildren():
         tag = child.tag.rsplit("}", 1)[-1]
@@ -156,34 +260,335 @@ def _cell(v) -> str:
     return str(v).replace("\n", " ").strip()
 
 
-def _xlsx_text(p: Path) -> str:
+def _sheet_md(title: str, rows: list[list[str]], cut: bool) -> str:
+    lines = []
+    for cells in rows:
+        while cells and not cells[-1]:
+            cells.pop()
+        if cells:
+            lines.append("| " + " | ".join(c.replace("|", "/") for c in cells) + " |")
+    head = f"## Aba: {title}" + (f" (primeiras {MAX_XLSX_ROWS} linhas)" if cut else "")
+    return head + "\n" + ("\n".join(lines) if lines else "(vazia)")
+
+
+def _xlsx_text(data: bytes) -> str:
     import openpyxl
-    wb = openpyxl.load_workbook(str(p), read_only=True, data_only=True)
+    _check_package(data)
+    wb = openpyxl.load_workbook(io.BytesIO(data), read_only=True, data_only=True)
     out: list[str] = []
     try:
         for ws in wb.worksheets:
-            rows: list[str] = []
+            rows: list[list[str]] = []
             cut = False
             for i, row in enumerate(ws.iter_rows(values_only=True)):
                 if i >= MAX_XLSX_ROWS:
                     cut = True
                     break
-                cells = [_cell(v) for v in row[:MAX_XLSX_COLS]]
-                while cells and not cells[-1]:
-                    cells.pop()
-                if cells:
-                    rows.append("| " + " | ".join(cells) + " |")
-            head = f"## Aba: {ws.title}"
-            if cut:
-                head += f" (primeiras {MAX_XLSX_ROWS} linhas)"
-            out.append(head + "\n" + ("\n".join(rows) if rows else "(vazia)"))
+                rows.append([_cell(v) for v in row[:MAX_XLSX_COLS]])
+            out.append(_sheet_md(ws.title, rows, cut))
     finally:
         wb.close()
     return "\n\n".join(out)
 
 
-def _html_text(data: bytes) -> str:
+def _pptx_text(data: bytes) -> str:
+    from pptx import Presentation
+    _check_package(data)
+    prs = Presentation(io.BytesIO(data))
+
+    def shapes(group):
+        for shape in group:
+            if hasattr(shape, "shapes"):  # grupo de formas
+                yield from shapes(shape.shapes)
+            else:
+                yield shape
+
+    out: list[str] = []
+    for i, slide in enumerate(prs.slides, 1):
+        title_shape = slide.shapes.title
+        title = title_shape.text_frame.text.strip() if title_shape is not None and title_shape.has_text_frame else ""
+        lines: list[str] = []
+        for shape in shapes(slide.shapes):
+            if title_shape is not None and shape.shape_id == title_shape.shape_id:
+                continue
+            if getattr(shape, "has_text_frame", False) and shape.has_text_frame:
+                for p in shape.text_frame.paragraphs:
+                    text = (p.text or "").replace("\v", " ").strip()
+                    if text:
+                        lines.append(("  " * (p.level or 0)) + "- " + text)
+            elif getattr(shape, "has_table", False) and shape.has_table:
+                for r in shape.table.rows:
+                    lines.append("| " + " | ".join(c.text.strip().replace("\n", " ") for c in r.cells) + " |")
+        if slide.has_notes_slide:
+            notes = (slide.notes_slide.notes_text_frame.text or "").strip() if slide.notes_slide.notes_text_frame else ""
+            if notes:
+                lines.append(f"Notas do apresentador: {notes}")
+        head = f"--- Slide {i}" + (f": {title}" if title else "") + " ---"
+        out.append(head + ("\n" + "\n".join(lines) if lines else ""))
+    return "\n\n".join(out)
+
+
+# OpenDocument (LibreOffice): o conteúdo fica no content.xml do pacote.
+ODF = {
+    "text": "urn:oasis:names:tc:opendocument:xmlns:text:1.0",
+    "table": "urn:oasis:names:tc:opendocument:xmlns:table:1.0",
+    "office": "urn:oasis:names:tc:opendocument:xmlns:office:1.0",
+    "draw": "urn:oasis:names:tc:opendocument:xmlns:drawing:1.0",
+    "presentation": "urn:oasis:names:tc:opendocument:xmlns:presentation:1.0",
+}
+
+
+def _odf_root(data: bytes):
+    import zipfile
+    from lxml import etree
+    _check_package(data)
+    with zipfile.ZipFile(io.BytesIO(data)) as zf:
+        return etree.fromstring(zf.read("content.xml"), parser=_safe_xml_parser())
+
+
+def _odf_inline(el) -> str:
+    """Texto de um text:p/text:h, com espaços (text:s), tabulação e quebra de linha; sem notas de rodapé."""
+    from lxml import etree
+    parts = [el.text or ""]
+    for c in el:
+        local = etree.QName(c).localname if isinstance(c.tag, str) else ""
+        if local == "s":
+            parts.append(" " * int(c.get(f"{{{ODF['text']}}}c") or 1))
+        elif local == "tab":
+            parts.append("\t")
+        elif local == "line-break":
+            parts.append("\n")
+        elif local not in {"note", "annotation", ""}:
+            parts.append(_odf_inline(c))
+        parts.append(c.tail or "")
+    return "".join(parts)
+
+
+def _odf_cell(cell) -> str:
+    t = f"{{{ODF['text']}}}"
+    return " ".join(_odf_inline(p).strip() for p in cell.iter(f"{t}p", f"{t}h")).strip().replace("\n", " ")
+
+
+def _odt_text(data: bytes) -> str:
+    from lxml import etree
+    root = _odf_root(data)
+    t, tb = f"{{{ODF['text']}}}", f"{{{ODF['table']}}}"
+    out: list[str] = []
+
+    def walk(el, depth: int = 0):
+        for c in el:
+            if not isinstance(c.tag, str):
+                continue
+            if c.tag == f"{t}h":
+                level = int(c.get(f"{t}outline-level") or 1)
+                if text := _odf_inline(c).strip():
+                    out.append(f"{'#' * min(level, 6)} {text}")
+            elif c.tag == f"{t}p":
+                if text := _odf_inline(c).strip():
+                    out.append(("  " * (depth - 1) + "- " if depth else "") + text)
+            elif c.tag == f"{t}list":
+                for item in c:
+                    walk(item, depth + 1)
+            elif c.tag == f"{tb}table":
+                rows = ["| " + " | ".join(_odf_cell(cell) for cell in r if etree.QName(cell).localname == "table-cell") + " |"
+                        for r in c.iter(f"{tb}table-row")]
+                if rows:
+                    out.append("\n".join(rows))
+            elif etree.QName(c).localname not in {"tracked-changes", "sequence-decls", "variable-decls"}:
+                walk(c, depth)
+
+    body = root.find(f"{{{ODF['office']}}}body")
+    walk(body if body is not None else root)
+    return "\n\n".join(out)
+
+
+def _ods_text(data: bytes) -> str:
+    root = _odf_root(data)
+    tb = f"{{{ODF['table']}}}"
+    out: list[str] = []
+    for table in root.iter(f"{tb}table"):
+        rows: list[list[str]] = []
+        cut = False
+        for r in table.iter(f"{tb}table-row"):
+            cells: list[str] = []
+            for cell in r:
+                if not isinstance(cell.tag, str) or not cell.tag.endswith(("table-cell", "covered-table-cell")):
+                    continue
+                n = min(int(cell.get(f"{tb}number-columns-repeated") or 1), MAX_XLSX_COLS)
+                cells.extend([_odf_cell(cell)] * n)
+                if len(cells) >= MAX_XLSX_COLS:
+                    break
+            cells = cells[:MAX_XLSX_COLS]
+            reps = int(r.get(f"{tb}number-rows-repeated") or 1)
+            if not any(cells):  # linhas vazias repetidas (o LibreOffice grava milhares)
+                continue
+            for _ in range(min(reps, MAX_XLSX_ROWS)):
+                if len(rows) >= MAX_XLSX_ROWS:
+                    cut = True
+                    break
+                rows.append(list(cells))
+            if cut:
+                break
+        out.append(_sheet_md(table.get(f"{tb}name") or "Planilha", rows, cut))
+    return "\n\n".join(out)
+
+
+def _odp_text(data: bytes) -> str:
+    root = _odf_root(data)
+    t, d, pr = f"{{{ODF['text']}}}", f"{{{ODF['draw']}}}", f"{{{ODF['presentation']}}}"
+    out: list[str] = []
+    for i, page in enumerate(root.iter(f"{d}page"), 1):
+        notes = page.find(f"{pr}notes")
+        lines = []
+        for child in page:
+            if child.tag == f"{pr}notes":
+                continue
+            for p in child.iter(f"{t}p", f"{t}h"):
+                if text := _odf_inline(p).strip():
+                    lines.append("- " + text)
+        if notes is not None:
+            note = " ".join(_odf_inline(p).strip() for p in notes.iter(f"{t}p")).strip()
+            if note:
+                lines.append(f"Notas do apresentador: {note}")
+        out.append(f"--- Slide {i} ---" + ("\n" + "\n".join(lines) if lines else ""))
+    return "\n\n".join(out)
+
+
+# RTF: leitor mínimo (texto, acentos \'hh e \uN, parágrafos e tabelas), sem imagens, campos ocultos e tabelas
+# de fonte/cor/estilo.
+_RTF_SKIP = {
+    "fonttbl", "colortbl", "stylesheet", "info", "pict", "object", "objdata", "fldinst", "header", "headerl",
+    "headerr", "headerf", "footer", "footerl", "footerr", "footerf", "listtable", "listoverridetable", "rsidtbl",
+    "generator", "themedata", "colorschememapping", "latentstyles", "datastore", "xmlnstbl", "filetbl",
+    "revtbl", "pgdsctbl", "shppict", "nonshppict", "bkmkstart", "bkmkend", "xe", "tc", "footnote", "annotation",
+    "atnid", "atnauthor", "atndate", "listtext", "pntext", "pntxta", "pntxtb", "mmathPr", "userprops",
+}
+_RTF_CHAR = {
+    "par": "\n", "line": "\n", "sect": "\n\n", "page": "\n\n", "tab": "\t", "cell": " | ", "row": "\n",
+    "emdash": "—", "endash": "–", "bullet": "•", "lquote": "‘", "rquote": "’", "ldblquote": "“", "rdblquote": "”",
+    "emspace": " ", "enspace": " ", "qmspace": " ",
+}
+_RTF_TOKEN = re.compile(r"\\([a-zA-Z]{1,32})(-?\d{1,10})? ?|\\'([0-9a-fA-F]{2})|\\(.)|([{}])|[\r\n]+|([^\\{}\r\n]+)", re.S)
+
+
+def _rtf_text(data: bytes) -> str:
+    import codecs
+    s = data.decode("latin-1")
+    if not s.lstrip().startswith("{\\rtf"):
+        raise FileError("O arquivo não é um RTF válido.")
+    enc = "cp1252"
+    if m := re.search(r"\\ansicpg(\d+)", s[:4000]):
+        try:
+            enc = codecs.lookup(f"cp{m.group(1)}").name
+        except LookupError:
+            pass
+    out: list[str] = []
+    stack: list[tuple[int, bool]] = []
+    uc, skip_dest, pending_skip = 1, False, 0
+    for m in _RTF_TOKEN.finditer(s):
+        word, arg, hexc, sym, brace, text = m.groups()
+        if brace:
+            pending_skip = 0
+            if brace == "{":
+                stack.append((uc, skip_dest))
+            elif stack:
+                uc, skip_dest = stack.pop()
+        elif word:
+            pending_skip = 0
+            if word in _RTF_SKIP:
+                skip_dest = True
+            elif skip_dest:
+                continue
+            elif word in _RTF_CHAR:
+                out.append(_RTF_CHAR[word])
+            elif word == "uc":
+                uc = int(arg or 1)
+            elif word == "u" and arg:
+                code = int(arg)
+                out.append(chr(code + 65536 if code < 0 else code))
+                pending_skip = uc
+        elif hexc:
+            if pending_skip:
+                pending_skip -= 1
+            elif not skip_dest:
+                out.append(bytes([int(hexc, 16)]).decode(enc, errors="replace"))
+        elif sym:
+            pending_skip = 0
+            if sym == "*":
+                skip_dest = True
+            elif skip_dest:
+                continue
+            elif sym in "\\{}":
+                out.append(sym)
+            elif sym == "~":
+                out.append("\xa0")
+            elif sym == "_":
+                out.append("-")
+            elif sym in "\r\n":
+                out.append("\n")
+        elif text:
+            if pending_skip:  # caracteres de reserva depois de \uN
+                n = min(pending_skip, len(text))
+                text, pending_skip = text[n:], pending_skip - n
+            if not skip_dest and text:
+                out.append(text)
+    result = "".join(out)
+    result = re.sub(r"[ \t]+\n", "\n", result)
+    return re.sub(r"\n{3,}", "\n\n", result).strip()
+
+
+def _subtitle_text(text: str) -> str:
+    """VTT/SRT (legendas e transcrições do Teams): tira numeração e tempos, junta falas seguidas do mesmo autor."""
+    out: list[str] = []
+    last_speaker = cue_speaker = None
+    skipping_block = False
+    raw_lines = text.split("\n")
+    for i, raw in enumerate(raw_lines):
+        s = raw.strip()
+        if i + 1 < len(raw_lines) and "-->" in raw_lines[i + 1]:  # identificador da fala (número ou id do Teams)
+            continue
+        if not s:
+            skipping_block = False
+            continue
+        if skipping_block or s.startswith(("WEBVTT", "Kind:", "Language:")):
+            continue
+        if s.startswith(("NOTE", "STYLE", "REGION")):
+            skipping_block = True
+            continue
+        if "-->" in s:  # tempo: começa outra fala
+            cue_speaker = None
+            continue
+        if s.isdigit():
+            continue
+        speaker = None
+        if m := re.match(r"<v(?:\.[^\s>]*)?\s+([^>]+)>(.*)$", s):
+            speaker, s = m.group(1).strip(), m.group(2)
+        elif m := re.match(r"^([A-ZÀ-Ý][\w.'\- ]{1,40}):\s+(.+)$", s):
+            speaker, s = m.group(1).strip(), m.group(2)
+        speaker = speaker or cue_speaker  # fala de várias linhas continua com o mesmo autor
+        cue_speaker = speaker
+        s = html_lib.unescape(re.sub(r"<[^>]+>", "", s)).strip()
+        if not s:
+            continue
+        if speaker:
+            if speaker == last_speaker and out:
+                out[-1] += " " + s
+            else:
+                out.append(f"{speaker}: {s}")
+        elif out and last_speaker is None and not out[-1].endswith((".", "?", "!")):
+            out[-1] += " " + s
+        else:
+            out.append(s)
+        last_speaker = speaker
+    return "\n".join(out)
+
+
+def _html_text(data: bytes | str) -> str:
     from lxml import html as lhtml
+    if isinstance(data, bytes) and data.startswith((b"\xff\xfe", b"\xfe\xff")):
+        data = _decode(data)
+    if isinstance(data, str):
+        data = re.sub(r"^\s*<\?xml[^>]*\?>", "", data)  # lxml recusa str com declaração de codificação
     doc = lhtml.document_fromstring(data)
     for bad in doc.xpath("//script|//style|//noscript|//template|//iframe|//object|//embed"):
         bad.drop_tree()
@@ -265,28 +670,207 @@ def _bpmn_text(data: bytes) -> str:
     return "\n".join(out).strip()
 
 
-def extract_text(p: Path) -> tuple[str, str]:
-    """Devolve (tipo, texto). Levanta FileError com mensagem amigável."""
-    ext = p.suffix.lower()
+def _eml_text(data: bytes, budget: dict) -> str:
+    import email
+    from email import policy
+    msg = email.message_from_bytes(data, policy=policy.default)
+    out: list[str] = []
+    for header, label in (("From", "De"), ("To", "Para"), ("Cc", "Cc"), ("Date", "Data"), ("Subject", "Assunto")):
+        if value := msg.get(header):
+            out.append(f"{label}: {value}")
+    body = msg.get_body(preferencelist=("plain", "html"))
+    if body is not None:
+        content = body.get_content()
+        if isinstance(content, bytes):
+            content = _decode(content)
+        text = _html_text(content) if body.get_content_type() == "text/html" else content
+        out.append("\n" + text.replace("\r\n", "\n").strip())
+    attachments = [(part.get_filename() or "anexo", part) for part in msg.iter_attachments()]
+    if attachments:
+        items = [(name, part.get_payload(decode=True) or b"") for name, part in attachments]
+        out.append("\n" + _bundle_text(items, budget, "Anexos do e-mail"))
+    return "\n".join(out).strip()
+
+
+# --- pacotes (.zip) ----------------------------------------------------------------------------------------
+
+def _zip_name(info) -> str:
+    """Nome do arquivo no .zip: sem a marca UTF-8, o Windows grava na página de código OEM (cp850 no Brasil)."""
+    if info.flag_bits & 0x800:
+        return info.filename
+    try:
+        return info.filename.encode("cp437").decode("cp850")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return info.filename
+
+
+def _size(n: int) -> str:
+    return f"{n / 1024 / 1024:.1f} MB" if n >= 1024 * 1024 else f"{max(1, round(n / 1024))} KB"
+
+
+def _bundle_text(items: list[tuple[str, bytes | None]], budget: dict, title: str, notes: dict | None = None) -> str:
+    """Lista os arquivos e extrai o texto de cada um que dá para ler. items: (nome, bytes ou None se pulado)."""
+    lines: list[str] = []
+    sections: list[str] = []
+    notes = notes or {}
+    for name, data in items:
+        if name in notes:
+            lines.append(f"- {name} — não lido: {notes[name]}")
+            continue
+        size = f" ({_size(len(data))})" if data is not None else ""
+        ext = Path(name).suffix.lower()
+        if ext not in READ_EXT and not _sniff(data or b""):
+            lines.append(f"- {name}{size} — não lido: {_unsupported(ext)}")
+            continue
+        if budget["chars"] <= 0:
+            lines.append(f"- {name}{size} — não lido: limite de texto do pacote atingido")
+            continue
+        try:
+            kind, text = _extract(ext, data or b"", budget["depth"] + 1, budget)
+        except FileError as e:
+            lines.append(f"- {name}{size} — não lido: {e}")
+            continue
+        text = text.strip()
+        budget["chars"] -= len(text)
+        lines.append(f"- {name}{size} — lido ({kind})")
+        sections.append(f"=== Arquivo: {name} ===\n{text or '(sem texto)'}")
+    head = f"## {title} ({len(items)} arquivo{'s' if len(items) != 1 else ''})\n" + "\n".join(lines)
+    return head + ("\n\n" + "\n\n".join(sections) if sections else "")
+
+
+def _zip_text(data: bytes, budget: dict) -> str:
+    import zipfile
+    try:
+        zf = zipfile.ZipFile(io.BytesIO(data))
+    except zipfile.BadZipFile:
+        raise FileError("O .zip está corrompido.")
+    items: list[tuple[str, bytes | None]] = []
+    notes: dict[str, str] = {}
+    with zf:
+        infos = [i for i in zf.infolist() if not i.is_dir()]
+        infos = [i for i in infos if not re.search(r"(^|/)(__MACOSX/|\._|\.DS_Store$|Thumbs\.db$|desktop\.ini$)", i.filename)]
+        extra = len(infos) - ZIP_MAX_MEMBERS
+        for info in infos[:ZIP_MAX_MEMBERS]:
+            name = _zip_name(info)
+            ext = Path(name).suffix.lower()
+            reason = _unsupported(ext) if ext and ext not in READ_EXT else None  # sem extensão: tenta reconhecer
+            if not reason and info.flag_bits & 0x1:
+                reason = "protegido por senha"
+            elif not reason and info.file_size > MAX_READ_BYTES:
+                reason = f"grande demais ({_size(info.file_size)}; limite de 20 MB)"
+            elif not reason and info.file_size > 1024 * 1024 and info.file_size > ZIP_MAX_RATIO * max(info.compress_size, 1):
+                reason = "taxa de compressão suspeita"
+            elif not reason and info.file_size > budget["bytes"]:
+                reason = "limite de tamanho do pacote atingido"
+            if reason:
+                notes[name] = reason
+                items.append((name, None))
+                continue
+            with zf.open(info) as f:
+                content = f.read(MAX_READ_BYTES + 1)
+            if len(content) > MAX_READ_BYTES:
+                notes[name] = "grande demais (limite de 20 MB)"
+                items.append((name, None))
+                continue
+            budget["bytes"] -= len(content)
+            items.append((name, content))
+    text = _bundle_text(items, budget, "Conteúdo do .zip", notes)
+    if extra > 0:
+        text = text.replace("\n", f"\n(mostrando os primeiros {ZIP_MAX_MEMBERS}; outros {extra} ficaram de fora)\n", 1)
+    return text
+
+
+# --- entrada única -----------------------------------------------------------------------------------------
+
+def _unsupported(ext: str) -> str:
+    if ext in LEGACY:
+        return f"formato antigo ({ext}); abra no Office e salve como {LEGACY[ext]}"
+    if ext in OTHER_ARCHIVES:
+        return f"compactado em {ext}; envie em .zip"
+    if ext in IMAGE_EXT:
+        return "imagem (não leio imagens dentro de pacotes; envie a imagem direto na conversa)"
+    if ext in MEDIA_EXT:
+        return "áudio ou vídeo (envie como mensagem de voz para transcrever)"
+    return f"formato {ext or 'sem extensão'} não suportado"
+
+
+def _sniff(data: bytes) -> str:
+    """Extensão provável de um arquivo sem extensão conhecida (anexo renomeado ou baixado sem nome)."""
+    if data.startswith(b"%PDF-"):
+        return ".pdf"
+    if data.lstrip()[:5] == b"{\\rtf":
+        return ".rtf"
+    if data.startswith(b"PK\x03\x04"):
+        import zipfile
+        try:
+            with zipfile.ZipFile(io.BytesIO(data)) as zf:
+                names = set(zf.namelist())
+                mimetype = zf.read("mimetype").decode("ascii", "ignore") if "mimetype" in names else ""
+        except zipfile.BadZipFile:
+            return ""
+        if "word/document.xml" in names:
+            return ".docx"
+        if "xl/workbook.xml" in names:
+            return ".xlsx"
+        if "ppt/presentation.xml" in names:
+            return ".pptx"
+        for suffix, ext in (("text", ".odt"), ("spreadsheet", ".ods"), ("presentation", ".odp")):
+            if mimetype.endswith(suffix):
+                return ext
+        return ".zip"
+    return ""
+
+
+def _extract(ext: str, data: bytes, depth: int = 0, budget: dict | None = None) -> tuple[str, str]:
+    budget = budget if budget is not None else {"bytes": ZIP_MAX_TOTAL, "chars": BUNDLE_MAX_CHARS, "depth": 0}
+    if depth > MAX_NEST:
+        raise FileError("Arquivos compactados uns dentro dos outros em níveis demais.")
+    if ext not in READ_EXT and (sniffed := _sniff(data)):
+        ext = sniffed
     if ext not in READ_EXT:
-        raise FileError("Formato não suportado. Leio TXT, MD, CSV, PDF, DOCX, XLSX, HTML e BPMN.")
+        reason = _unsupported(ext)
+        raise FileError(f"{reason[0].upper()}{reason[1:]}. {FORMATS_MSG}")
+    outer_depth = budget["depth"]
+    budget["depth"] = depth
     try:
         if ext == ".pdf":
-            return "pdf", _pdf_text(p)
-        if ext == ".docx":
-            return "docx", _docx_text(p)
-        if ext == ".xlsx":
-            return "xlsx", _xlsx_text(p)
-        data = p.read_bytes()
-        if ext in {".html", ".htm"}:
+            return "pdf", _pdf_text(data)
+        if ext in {".docx", ".docm", ".dotx", ".dotm"}:
+            return "docx", _docx_text(data)
+        if ext in {".xlsx", ".xlsm", ".xltx", ".xltm"}:
+            return "xlsx", _xlsx_text(data)
+        if ext in {".pptx", ".pptm"}:
+            return "pptx", _pptx_text(data)
+        if ext == ".odt":
+            return "odt", _odt_text(data)
+        if ext == ".ods":
+            return "ods", _ods_text(data)
+        if ext == ".odp":
+            return "odp", _odp_text(data)
+        if ext == ".rtf":
+            return "rtf", _rtf_text(data)
+        if ext == ".eml":
+            return "eml", _eml_text(data, budget)
+        if ext == ".zip":
+            return "zip", _zip_text(data, budget)
+        if ext in {".html", ".htm", ".xhtml"}:
             return "html", _html_text(data)
         if ext == ".bpmn" or (ext == ".xml" and b"BPMN/20100524/MODEL" in data[:4000]):
             return "bpmn", _bpmn_text(data)
+        if ext in {".vtt", ".srt"}:
+            return ext.lstrip("."), _subtitle_text(_decode(data))
         return ext.lstrip("."), _decode(data)
     except FileError:
         raise
     except Exception as e:  # noqa: BLE001
         raise FileError(f"Não consegui ler o arquivo ({type(e).__name__}). Ele pode estar corrompido.") from e
+    finally:
+        budget["depth"] = outer_depth
+
+
+def extract_text(p: Path) -> tuple[str, str]:
+    """Devolve (tipo, texto). Levanta FileError com mensagem amigável."""
+    return _extract(p.suffix.lower(), p.read_bytes())
 
 
 # --- Markdown simples (base de TXT, DOCX e PDF) ------------------------------------------------------------
