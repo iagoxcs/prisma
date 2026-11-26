@@ -663,10 +663,23 @@ def _bpmn_text(data: bytes) -> str:
             for f in flows:
                 label = f" [{f.get('name')}]" if f.get("name") else ""
                 out.append(f"- {names.get(f.get('sourceRef'), '?')} → {names.get(f.get('targetRef'), '?')}{label}")
-        notes = [(" ".join(t.itertext())).strip() for t in proc.findall(".//b:textAnnotation/b:text", ns)]
-        if any(notes):
+        ann_ids = {ta.get("id") for ta in proc.findall(".//b:textAnnotation", ns)}
+        linked: dict[str, str] = {}  # anotação -> etapa (a associação pode vir nos dois sentidos)
+        for a in root.iter(f"{{{BPMN_NS}}}association"):
+            s_, t_ = a.get("sourceRef"), a.get("targetRef")
+            if t_ in ann_ids:
+                linked[t_] = s_
+            elif s_ in ann_ids:
+                linked[s_] = t_
+        notes = []
+        for ta in proc.findall(".//b:textAnnotation", ns):
+            text = " ".join(" ".join(t.itertext()) for t in ta.findall("b:text", ns)).strip()
+            other = linked.get(ta.get("id"))
+            if text:
+                notes.append(text + (f" (etapa: {names[other]})" if other in names and other != ta.get("id") else ""))
+        if notes:
             out.append("\n## Anotações")
-            out.extend(f"- {n}" for n in notes if n)
+            out.extend(f"- {n}" for n in notes)
     return "\n".join(out).strip()
 
 
@@ -1263,17 +1276,26 @@ def make_xlsx(tabela: dict) -> bytes:
 
 # --- BPMN 2.0 com diagrama (DI) e layout automático --------------------------------------------------------
 # Padrão Ambiente: uma pool (participante) com uma raia por ator; fluxo da esquerda para a direita.
+# Visual (0.14.0): tarefas largas (200x80) para o texto caber, colunas com a largura do maior elemento,
+# anotações de texto (campo `nota`, ex.: o detalhe de um GAP) ligadas à etapa por associação pontilhada,
+# acima ou abaixo dela, e saídas de gateway por lados diferentes para os rótulos não se sobreporem.
 
 _BPMN_TYPES = {
-    "inicio": ("startEvent", 36, 36), "fim": ("endEvent", 36, 36), "tarefa": ("task", 110, 70),
+    "inicio": ("startEvent", 36, 36), "fim": ("endEvent", 36, 36), "tarefa": ("task", 200, 80),
     "gateway": ("exclusiveGateway", 50, 50), "paralelo": ("parallelGateway", 50, 50),
-    "evento": ("intermediateThrowEvent", 36, 36), "subprocesso": ("subProcess", 110, 70),
+    "evento": ("intermediateThrowEvent", 36, 36), "subprocesso": ("subProcess", 200, 80),
 }
-_COL_W = 170
-_ROW_H = 110
+_GAP_X = 70          # espaço horizontal entre colunas
+_GW_EXTRA = 70       # espaço a mais depois de um gateway com saídas rotuladas
+_FLOW_LABEL_W = 120  # largura máxima do rótulo de um fluxo (quebra em linhas)
+_ROW_H = 130         # altura de uma linha de elementos dentro da raia
 _LANE_X = 30
 _LANE_LABEL = 30
 _POOL_LABEL = 30
+_ANN_W = 250         # largura da anotação
+_ANN_CHARS = 38      # caracteres por linha da anotação (fonte padrão do Camunda/bpmn-js)
+_ANN_LINE = 15
+_ANN_GAP = 30        # espaço entre a anotação e a etapa (linha pontilhada)
 
 
 def _xml_id(raw: str, used: set[str]) -> str:
@@ -1287,8 +1309,21 @@ def _xml_id(raw: str, used: set[str]) -> str:
     return out
 
 
+def _ann_height(text: str) -> int:
+    lines = 0
+    for para in (text or "").split("\n"):
+        cur = 0
+        lines += 1
+        for w in para.split():
+            if cur and cur + 1 + len(w) > _ANN_CHARS:
+                lines, cur = lines + 1, len(w)
+            else:
+                cur += (1 if cur else 0) + len(w)
+    return 14 + max(1, lines) * _ANN_LINE
+
+
 def make_bpmn(processo: dict) -> bytes:
-    from xml.sax.saxutils import quoteattr
+    from xml.sax.saxutils import escape, quoteattr
 
     if not isinstance(processo, dict):
         raise FileError("Para BPMN, envie processo = {nome, raias, elementos, fluxos}.")
@@ -1317,7 +1352,7 @@ def make_bpmn(processo: dict) -> bytes:
         if raia not in raias:
             raias.append(raia[:120])
         nodes[key] = {"xid": _xml_id(key, used), "tipo": tipo, "nome": str(e.get("nome") or "")[:300], "raia": raia,
-                      "in": [], "out": []}
+                      "nota": str(e.get("nota") or "").strip()[:600], "in": [], "out": []}
         order.append(key)
 
     flows = []
@@ -1373,23 +1408,92 @@ def make_bpmn(processo: dict) -> bytes:
         slot[k] = taken.get(key, 0)
         taken[key] = slot[k] + 1
         depth[nodes[k]["raia"]] = max(depth[nodes[k]["raia"]], taken[key])
+
+    # Largura de cada coluna = maior elemento dela + espaço.
+    max_col = max(col.values()) if col else 0
+    col_w = [0] * (max_col + 1)
+    for k in order:
+        col_w[col[k]] = max(col_w[col[k]], _BPMN_TYPES[nodes[k]["tipo"]][1])
+    x0 = _LANE_X + _POOL_LABEL + _LANE_LABEL + 50
+    col_x, acc = [], x0
+    gw_cols = {col[f["de"]] for f in flows if f["rotulo"] and nodes[f["de"]]["tipo"] in ("gateway", "paralelo")}
+    for c, w in enumerate(col_w):
+        col_x.append(acc)
+        acc += w + _GAP_X + (_GW_EXTRA if c in gw_cols else 0)  # espaço para o rótulo da saída do gateway
+
+    # Anotações: faixa de cima ou de baixo da raia, alternando entre etapas vizinhas com nota.
+    band: dict[str, str] = {}
+    for r in raias:
+        noted = sorted((k for k in order if nodes[k]["raia"] == r and nodes[k]["nota"]), key=lambda k: (col[k], slot[k]))
+        for i, k in enumerate(noted):
+            if depth[r] > 1:
+                band[k] = "top" if slot[k] == 0 else "bottom"
+            else:
+                band[k] = "top" if i % 2 == 0 else "bottom"
+    ann_h = {k: _ann_height(nodes[k]["nota"]) for k in band}
+
+    # Posição x de cada elemento (só depende da coluna) e da anotação desejada.
+    elem_cx = {k: col_x[col[k]] + col_w[col[k]] // 2 for k in order}
+    ann_x: dict[str, int] = {}
+    for k in band:
+        w = _BPMN_TYPES[nodes[k]["tipo"]][1]
+        # evento e gateway têm o nome embaixo (ou em cima): a anotação vai ao lado dele
+        ann_x[k] = elem_cx[k] - 30 if nodes[k]["tipo"] in ("tarefa", "subprocesso") else elem_cx[k] + w // 2 + 40
+
+    # Camadas: anotações que colidiriam na mesma faixa sobem (ou descem) uma camada, em vez de escorregar
+    # para o lado; a camada 0 é a mais próxima das etapas.
+    ann_tier: dict[str, int] = {}
+    tier_h: dict[tuple[str, str, int], int] = {}
+    for r in raias:
+        for bnd in ("top", "bottom"):
+            tiers: list[int] = []  # borda direita ocupada em cada camada
+            for k in sorted((k for k in band if band[k] == bnd and nodes[k]["raia"] == r), key=lambda k: ann_x[k]):
+                t = next((i for i, rt in enumerate(tiers) if ann_x[k] >= rt + 15), len(tiers))
+                if t == len(tiers):
+                    tiers.append(0)
+                tiers[t] = ann_x[k] + _ANN_W
+                ann_tier[k] = t
+                tier_h[(r, bnd, t)] = max(tier_h.get((r, bnd, t), 0), ann_h[k])
+    top_h = {r: 0 for r in raias}
+    bot_h = {r: 0 for r in raias}
+    for (r, bnd, _t), h in tier_h.items():
+        if bnd == "top":
+            top_h[r] += h + 10
+        else:
+            bot_h[r] += h + 10
+    for r in raias:
+        top_h[r] += _ANN_GAP - 10 if top_h[r] else 0
+        bot_h[r] += _ANN_GAP - 10 if bot_h[r] else 0
+
     lane_y: dict[str, int] = {}
+    lane_h: dict[str, int] = {}
     y = 40
     for r in raias:
         lane_y[r] = y
-        y += depth[r] * _ROW_H + 20
+        lane_h[r] = top_h[r] + depth[r] * _ROW_H + bot_h[r] + 20
+        y += lane_h[r]
     pool_h = y - 40
-    max_col = max(col.values()) if col else 0
-    pool_w = _POOL_LABEL + _LANE_LABEL + 60 + (max_col + 1) * _COL_W
-    x0 = _LANE_X + _POOL_LABEL + _LANE_LABEL + 40
 
     bounds: dict[str, tuple[int, int, int, int]] = {}
     for k in order:
         n = nodes[k]
         _, w, h = _BPMN_TYPES[n["tipo"]]
-        cx = x0 + col[k] * _COL_W + 55
-        cy = lane_y[n["raia"]] + 10 + slot[k] * _ROW_H + _ROW_H // 2
-        bounds[k] = (cx - w // 2, cy - h // 2, w, h)
+        cy = lane_y[n["raia"]] + 10 + top_h[n["raia"]] + slot[k] * _ROW_H + _ROW_H // 2
+        bounds[k] = (elem_cx[k] - w // 2, cy - h // 2, w, h)
+
+    ann_b: dict[str, tuple[int, int, int, int]] = {}
+    for k in band:
+        r, t, h = nodes[k]["raia"], ann_tier[k], ann_h[k]
+        rows_top = lane_y[r] + 10 + top_h[r]
+        if band[k] == "top":
+            y_bottom = rows_top - (_ANN_GAP - 10) - sum(tier_h[(r, "top", i)] + 10 for i in range(t))
+            ay = y_bottom - h
+        else:
+            ay = rows_top + depth[r] * _ROW_H + sum(tier_h[(r, "bottom", i)] + 10 for i in range(t))
+        ann_b[k] = (ann_x[k], ay, _ANN_W, h)
+
+    right = max([x + w for x, _, w, _ in bounds.values()] + [x + w for x, _, w, _ in ann_b.values()])
+    pool_w = right + 50 - _LANE_X
 
     def a(v: str) -> str:
         return quoteattr(v)
@@ -1417,40 +1521,155 @@ def make_bpmn(processo: dict) -> bytes:
         name = f" name={a(f['rotulo'])}" if f["rotulo"] else ""
         proc.append(f"    <bpmn:sequenceFlow id={a(f['id'])}{name} sourceRef={a(nodes[f['de']]['xid'])} "
                     f"targetRef={a(nodes[f['para']]['xid'])} />")
+    ann_ids: dict[str, tuple[str, str]] = {}
+    for k in order:
+        if k in ann_b:
+            tid = _xml_id(f"Annotation_{nodes[k]['xid']}", used)
+            aid = _xml_id(f"Association_{nodes[k]['xid']}", used)
+            ann_ids[k] = (tid, aid)
+            proc.append(f"    <bpmn:textAnnotation id={a(tid)}><bpmn:text>{escape(nodes[k]['nota'])}</bpmn:text>"
+                        f"</bpmn:textAnnotation>")
+            proc.append(f'    <bpmn:association id={a(aid)} associationDirection="None" '
+                        f"sourceRef={a(nodes[k]['xid'])} targetRef={a(tid)} />")
 
     di: list[str] = []
     di.append(f'      <bpmndi:BPMNShape id="Participant_1_di" bpmnElement="Participant_1" isHorizontal="true">'
               f'<dc:Bounds x="{_LANE_X}" y="40" width="{pool_w}" height="{pool_h}" /></bpmndi:BPMNShape>')
     for r in raias:
-        h = depth[r] * _ROW_H + 20
         di.append(f'      <bpmndi:BPMNShape id="{lane_ids[r]}_di" bpmnElement="{lane_ids[r]}" isHorizontal="true">'
-                  f'<dc:Bounds x="{_LANE_X + _POOL_LABEL}" y="{lane_y[r]}" width="{pool_w - _POOL_LABEL}" height="{h}" />'
-                  f"</bpmndi:BPMNShape>")
+                  f'<dc:Bounds x="{_LANE_X + _POOL_LABEL}" y="{lane_y[r]}" width="{pool_w - _POOL_LABEL}" '
+                  f'height="{lane_h[r]}" /></bpmndi:BPMNShape>')
+    def cy_of(k: str) -> int:
+        return bounds[k][1] + bounds[k][3] // 2
+
+    def crosses(pts: list, skip: tuple) -> int:
+        """Quantas caixas (fora origem e destino) os segmentos retos atravessam."""
+        n = 0
+        for (x1, y1), (x2, y2) in zip(pts, pts[1:]):
+            for k, (bx, by, bw, bh) in bounds.items():
+                if k in skip:
+                    continue
+                bx, by, bw, bh = bx - 4, by - 4, bw + 8, bh + 8
+                if x1 == x2 and bx < x1 < bx + bw and min(y1, y2) < by + bh and max(y1, y2) > by:
+                    n += 1
+                elif y1 == y2 and by < y1 < by + bh and min(x1, x2) < bx + bw and max(x1, x2) > bx:
+                    n += 1
+        return n
+
+    bottom = 40 + pool_h - 12
+    top_line = 40 + 12
+    used_channels: dict[int, int] = {}
+
+    def channel_y(k: str, side: str) -> int:
+        """Altura livre logo acima (up) ou abaixo (down) da fileira do elemento, dentro da raia."""
+        base = cy_of(k) - _ROW_H // 2 + 6 if side == "up" else cy_of(k) + _ROW_H // 2 - 6
+        n = used_channels.get(base, 0)
+        used_channels[base] = n + 1
+        return base + (8 * n if side == "up" else -8 * n)
+
+    # Rota de cada fluxo: testa as opções em ordem e fica com a primeira que não atravessa nenhuma caixa.
+    # Gateway: reto (mesma fileira), tronco por baixo/cima até a fileira do destino, contorno pela borda.
+    # Tarefa/evento: reto, cotovelo perto do destino, cotovelo perto da origem, contorno pela borda.
+    route: dict[str, tuple[list, str, int]] = {}  # fluxo -> (pontos, lado de saída, índice do ponto do rótulo)
+    for f in flows:
+        s, t = f["de"], f["para"]
+        sx, sy, sw, sh = bounds[s]
+        tx, ty, tw, th = bounds[t]
+        scx, scy, tcx, tcy = sx + sw // 2, cy_of(s), tx + tw // 2, cy_of(t)
+        is_gw = nodes[s]["tipo"] in ("gateway", "paralelo")
+        cands: list[tuple[list, str, int]] = []
+        if col[t] > col[s]:
+            if scy == tcy:
+                cands.append(([(sx + sw, scy), (tx, tcy)], "right", 0))
+            if is_gw and scy != tcy:
+                d = "down" if tcy > scy else "up"
+                cands.append(([(scx, sy + sh if d == "down" else sy), (scx, tcy), (tx, tcy)], d, 1))
+            if scy != tcy:
+                for mx in (tx - _GAP_X // 2, sx + sw + _GAP_X // 2):
+                    cands.append(([(sx + sw, scy), (mx, scy), (mx, tcy), (tx, tcy)], "right", 0))
+            for d in (("up", "down") if tcy <= scy else ("down", "up")):
+                # contorno: sai por cima/baixo, corre na borda da fileira de destino e entra por cima/baixo
+                yd_t = tcy - _ROW_H // 2 + 6 if d == "up" or tcy > scy else tcy + _ROW_H // 2 - 6
+                if scy == tcy:
+                    yd_t = tcy - _ROW_H // 2 + 6 if d == "up" else tcy + _ROW_H // 2 - 6
+                enter = ty if yd_t < tcy else ty + th
+                if is_gw:
+                    pts = [(scx, sy + sh if yd_t > scy else sy), (scx, yd_t), (tcx, yd_t), (tcx, enter)]
+                    cands.append((pts, "down" if yd_t > scy else "up", 0))
+                mx = sx + sw + _GAP_X // 2
+                cands.append(([(sx + sw, scy), (mx, scy), (mx, yd_t), (tcx, yd_t), (tcx, enter)], "right", 0))
+        elif col[t] == col[s]:
+            d = "down" if ty > sy else "up"
+            cands.append(([(scx, sy + sh if d == "down" else sy), (tcx, ty if d == "down" else ty + th)], d, 0))
+        else:  # retorno: por baixo ou por cima da pool
+            cands.append(([(scx, sy + sh), (scx, bottom), (tcx, bottom), (tcx, ty + th)], "down", 0))
+            cands.append(([(scx, sy), (scx, top_line), (tcx, top_line), (tcx, ty)], "up", 0))
+        best = min(range(len(cands)), key=lambda i: (crosses(cands[i][0], (s, t)), i))
+        pts, side, li = cands[best]
+        # contorno na mesma borda: afasta linhas paralelas
+        if len(pts) >= 4 and pts[-2][1] == pts[-3][1] and pts[-2][1] not in (scy, tcy, bottom, top_line):
+            yd = channel_y(t, "up" if pts[-2][1] < tcy else "down")
+            pts = [p if p[1] != pts[-2][1] else (p[0], yd) for p in pts]
+        route[f["id"]] = (pts, side, li)
+
+    # Lados usados pelas saídas de cada gateway (para o nome dele não cair em cima de uma linha ou rótulo).
+    gw_sides: dict[str, set] = {k: set() for k in nodes}
+    for f in flows:
+        gw_sides[f["de"]].add(route[f["id"]][1])
+
     for k in order:
         x, y_, w, h = bounds[k]
         extra = ' isMarkerVisible="true"' if nodes[k]["tipo"] == "gateway" else ""
+        label = ""
+        if nodes[k]["tipo"] in ("inicio", "fim", "evento", "gateway", "paralelo") and nodes[k]["nome"]:
+            lw, lh = 110, 40
+            lx, ly = x + w // 2 - lw // 2, y_ + h + 5
+            sides = gw_sides[k] if nodes[k]["tipo"] in ("gateway", "paralelo") else set()
+            if "down" in sides and "up" not in sides:
+                ly = y_ - lh - 5  # nome acima
+                if "right" in sides:
+                    lx = x + w // 2 - lw + 20  # e à esquerda, longe do rótulo da saída da direita
+            elif {"down", "up"} <= sides:
+                lx, ly = x - lw - 5, y_ - lh  # cima e baixo ocupados: nome à esquerda
+            elif "right" in sides and "down" not in sides:
+                lx = x + w // 2 - lw + 20  # nome embaixo, à esquerda
+            label = (f'<bpmndi:BPMNLabel><dc:Bounds x="{lx}" y="{ly}" width="{lw}" '
+                     f'height="{lh}" /></bpmndi:BPMNLabel>')
         di.append(f'      <bpmndi:BPMNShape id="{nodes[k]["xid"]}_di" bpmnElement="{nodes[k]["xid"]}"{extra}>'
-                  f'<dc:Bounds x="{x}" y="{y_}" width="{w}" height="{h}" /></bpmndi:BPMNShape>')
-    bottom = 40 + pool_h - 12
+                  f'<dc:Bounds x="{x}" y="{y_}" width="{w}" height="{h}" />{label}</bpmndi:BPMNShape>')
     for f in flows:
-        sx, sy, sw, sh = bounds[f["de"]]
-        tx, ty, tw, th = bounds[f["para"]]
-        if col[f["para"]] > col[f["de"]]:  # para frente: sai pela direita, entra pela esquerda (cotovelo)
-            p1 = (sx + sw, sy + sh // 2)
-            p4 = (tx, ty + th // 2)
-            mx = (p1[0] + p4[0]) // 2
-            pts = [p1, (mx, p1[1]), (mx, p4[1]), p4] if p1[1] != p4[1] else [p1, p4]
-        elif col[f["para"]] == col[f["de"]]:  # mesma coluna: vertical
-            down = ty > sy
-            pts = [(sx + sw // 2, sy + sh if down else sy), (tx + tw // 2, ty if down else ty + th)]
-        else:  # retorno: por baixo da pool
-            pts = [(sx + sw // 2, sy + sh), (sx + sw // 2, bottom), (tx + tw // 2, bottom), (tx + tw // 2, ty + th)]
+        pts, side, li = route[f["id"]]
         wp = "".join(f'<di:waypoint x="{px}" y="{py}" />' for px, py in pts)
         label = ""
         if f["rotulo"]:
-            lx, ly = pts[0][0] + 6, pts[0][1] - 20
-            label = f'<bpmndi:BPMNLabel><dc:Bounds x="{lx}" y="{ly}" width="60" height="14" /></bpmndi:BPMNLabel>'
+            text_w = 7 * len(f["rotulo"]) + 4
+            lw = max(24, min(text_w, _FLOW_LABEL_W))
+            lh = 14 * -(-text_w // lw)
+            # rótulo no começo do último trecho horizontal (a entrada do ramo): saídas do mesmo gateway
+            # que começam no mesmo ponto ficam com os rótulos separados
+            horiz = [i for i in range(len(pts) - 1) if pts[i][1] == pts[i + 1][1] and pts[i][0] != pts[i + 1][0]]
+            li = horiz[-1] if horiz and pts[horiz[-1]][1] not in (bottom, top_line) else li
+            px, py = pts[li]
+            if li > 0 or side != "down":
+                lx, ly = px + 6, py - 4 - lh  # acima da linha, logo depois do ponto
+            else:
+                lx, ly = px + 6, py + 4  # saída por baixo: ao lado da linha, logo abaixo do gateway
+            label = (f'<bpmndi:BPMNLabel><dc:Bounds x="{lx}" y="{ly}" width="{lw}" height="{lh}" />'
+                     f"</bpmndi:BPMNLabel>")
         di.append(f'      <bpmndi:BPMNEdge id="{f["id"]}_di" bpmnElement="{f["id"]}">{wp}{label}</bpmndi:BPMNEdge>')
+    for k, (tid, aid) in ann_ids.items():
+        ax, ay, aw, ah = ann_b[k]
+        ex, ey, ew, eh = bounds[k]
+        di.append(f'      <bpmndi:BPMNShape id="{tid}_di" bpmnElement="{tid}">'
+                  f'<dc:Bounds x="{ax}" y="{ay}" width="{aw}" height="{ah}" /></bpmndi:BPMNShape>')
+        if nodes[k]["tipo"] not in ("tarefa", "subprocesso"):  # evento/gateway: sai pela lateral, longe do nome
+            pts = [(ex + ew, ey + eh // 2), (ax, ay + ah if band[k] == "top" else ay)]
+        elif band[k] == "top":
+            pts = [(ex + ew // 2, ey), (ax + 20, ay + ah)]
+        else:
+            pts = [(ex + ew // 2, ey + eh), (ax + 20, ay)]
+        wp = "".join(f'<di:waypoint x="{px}" y="{py}" />' for px, py in pts)
+        di.append(f'      <bpmndi:BPMNEdge id="{aid}_di" bpmnElement="{aid}">{wp}</bpmndi:BPMNEdge>')
 
     xml = "\n".join([
         '<?xml version="1.0" encoding="UTF-8"?>',
