@@ -25,8 +25,29 @@ export class ReadError extends Error {}
 const SHEET_MAX_ROWS = 500;
 const SHEET_MAX_COLS = 50;
 
-// UTF-8; se vierem caracteres inválidos, relê como Windows-1252 (Excel e Bloco de Notas em pt-BR).
+// UTF-16 (Bloco de Notas, exportações do Teams e do Word): pela marca no início (BOM) ou, sem ela, por metade
+// dos bytes ser zero.
+function utf16Encoding(bytes: Uint8Array): "utf-16le" | "utf-16be" | null {
+  if (bytes[0] === 0xff && bytes[1] === 0xfe) return "utf-16le";
+  if (bytes[0] === 0xfe && bytes[1] === 0xff) return "utf-16be";
+  const n = Math.min(bytes.length, 4000) & ~1;
+  if (n < 4) return null;
+  let even = 0;
+  let odd = 0;
+  for (let i = 0; i < n; i += 2) {
+    if (bytes[i] === 0) even++;
+    if (bytes[i + 1] === 0) odd++;
+  }
+  const half = n / 2;
+  if (odd > half * 0.3 && even < half * 0.05) return "utf-16le";
+  if (even > half * 0.3 && odd < half * 0.05) return "utf-16be";
+  return null;
+}
+
+// UTF-16, UTF-8 e, se vierem caracteres inválidos, Windows-1252 (Excel e Bloco de Notas em pt-BR).
 export function decodeText(buffer: ArrayBuffer): string {
+  const utf16 = utf16Encoding(new Uint8Array(buffer));
+  if (utf16) return new TextDecoder(utf16).decode(buffer).replace(/\u0000/g, "");
   const utf8 = new TextDecoder("utf-8").decode(buffer).replace(/^﻿/, "");
   return utf8.includes("�") ? new TextDecoder("windows-1252").decode(buffer) : utf8;
 }
