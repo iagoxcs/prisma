@@ -45,6 +45,17 @@ Canais (DP6, 25/11/2026): no `data/.env` do Hermes, `DISCORD_REQUIRE_MENTION=tru
 Skills do Hermes: instruções em Markdown (`SKILL.md` com frontmatter `name`, `description`, `metadata.hermes.tags`) que o agente lista e abre com `skills_list` e `skill_view`. Cada skill fica em `skills/<categoria>/<nome>/SKILL.md`; as do Prisma usam a categoria `prisma`.
 
 - `prisma/ata-de-reuniao`: recebe uma ata (arquivo ou texto), registra no Contexto do projeto e propõe as tarefas de "Saídas e Responsáveis" numa prévia só.
+- `prisma/bpmn-generator`: gera o fluxograma `.bpmn` (As Is ou To Be, uma pool com raias) por `prisma_gerar_arquivo`. Criada pelo próprio bot e aprovada por `/skills approve` em 26/11/2026; trazida para o repositório na mesma data.
+- `prisma/status-report`: One Page Report de status em PDF ou Word, a partir das tarefas e do Contexto do projeto. Inclui as regras da OPR semanal da Zuppani.
+- `prisma/analise-indicadores`: lê uma tabela de indicadores, calcula a situação frente à meta e entrega o relatório com título-conclusão em PDF, Word ou Excel.
+- `prisma/lista-requisitos`: Lista de Requisitos de Melhorias para TI em Word (sem timbre).
+- `prisma/cronograma-para-tarefas`: cronograma de mapeamento por área (cinco etapas) proposto como tarefas no Prisma numa prévia só. Substitui o CSV de importação.
+- `prisma/conselho`: cinco conselheiros analisam uma decisão, fazem revisão cruzada e dão o veredito; relatório completo em PDF opcional.
+- `prisma/prompt-pctf`: revisa ou monta um prompt no método Persona, Contexto, Tarefa e Formato.
+
+Essas skills foram adaptadas, em 26/11/2026, das versões do Claude Code (one-page-report, png-op, opr-zuppani, indicadores-consultoria, indicadores-recortes, requisitos-sefic, prisma-csv, conselho e prompt-pctf). No bot, a entrega é só por `prisma_gerar_arquivo`, sem scripts, templates, PNG nem HTML com visual próprio. dashboard-vidro, infografico-executivo, metodologia-fourbox e manual-lideranca-geolab ficaram só no Claude Code: dependem de visual próprio, de navegador ou de dados pessoais de avaliação.
+
+Atenção: a instalação abaixo apaga `data/skills/prisma` na VPS e copia a pasta do repositório. Uma skill aprovada pelo Discord (`/skills approve`) que não estiver no repositório some na próxima instalação. Depois de aprovar uma pelo Discord, traga-a para cá. Depois de instalar, rode `/reload-skills` no Discord para o menu `/skill` mostrar as novas.
 
 Como escrever uma skill nova:
 
