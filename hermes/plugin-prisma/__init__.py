@@ -1059,7 +1059,8 @@ def gerar_arquivo(args: dict, **_kw) -> str:
     fmt = (_str(args, "formato") or "").lower()
     title = _str(args, "titulo") or ""
     try:
-        data = _files.generate(fmt, title, args.get("conteudo"), args.get("tabela"), args.get("processo"))
+        data = _files.generate(fmt, title, args.get("conteudo"), args.get("tabela"), args.get("processo"),
+                               _str(args, "modelo"))
     except _files.FileError as e:
         return _out({"ok": False, "code": "file_error", "error": str(e)})
     except Exception as e:  # noqa: BLE001
@@ -1268,13 +1269,18 @@ TOOLS += [
         "prisma_gerar_arquivo",
         "Gera um arquivo e envia nesta conversa (DM ou canal). txt, md, html, docx e pdf: envie 'conteudo' em Markdown "
         "(# títulos, - listas, 1. numeradas, | tabelas |, **negrito**). xlsx: envie 'tabela'. bpmn: envie 'processo' "
-        "(BPMN 2.0 com diagrama, uma pool com uma raia por ator, abre no Camunda e no Bizagi). Não grava nada no "
-        "Prisma. Create file, write document, export, generate pdf word excel html bpmn, gerar arquivo, criar "
-        "documento, planilha, fluxograma." + _NOTE,
+        "(BPMN 2.0 com diagrama, uma pool com uma raia por ator, abre no Camunda e no Bizagi). docx com "
+        "modelo 'timbrado' sai no papel timbrado oficial da Ambiente (FOR-AMBT-06). Não grava nada no "
+        "Prisma. Create file, write document, export, generate pdf word excel html bpmn, letterhead, gerar arquivo, "
+        "criar documento, papel timbrado, planilha, fluxograma." + _NOTE,
         {"formato": {"type": "string", "enum": list(_files.WRITE_FORMATS)},
          "nome": {"type": "string", "description": "Nome do arquivo, sem extensão."},
          "titulo": {"type": "string", "description": "Título do documento (opcional)."},
          "conteudo": {"type": "string", "description": "Markdown, para txt/md/html/docx/pdf."},
+         "modelo": {"type": "string", "enum": list(_files.DOCX_MODELOS),
+                    "description": "Só para docx. 'timbrado': papel timbrado oficial da Ambiente (FOR-AMBT-06: logo "
+                                   "no cabeçalho, contatos no rodapé, A4), para documento que vai ao cliente. "
+                                   "Padrão: 'simples' (sem timbre)."},
          "tabela": {"type": "object", "description": "Para xlsx.", "properties": {
              "abas": {"type": "array", "items": {"type": "object", "properties": {
                  "nome": {"type": "string"},

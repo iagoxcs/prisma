@@ -418,13 +418,46 @@ def make_html(md: str, title: str = "") -> bytes:
     return page.encode("utf-8")
 
 
-def make_docx(md: str, title: str = "") -> bytes:
-    import docx
-    from docx.shared import Pt
+# Papel timbrado oficial da Ambiente (FOR-AMBT-06): logo no cabeçalho, barra de contatos no rodapé, A4 com as
+# margens do modelo. O documento parte do próprio .docx do modelo e só o corpo é trocado; cabeçalho, rodapé,
+# imagens, fontes embutidas, estilos e a seção (sectPr) ficam como estão. Atualizar o timbre = trocar o arquivo.
+TIMBRADO_DOCX = Path(__file__).resolve().parent / "assets" / "FOR-AMBT-06_Modelo_timbrado_Ambiente.docx"
+DOCX_MODELOS = ("simples", "timbrado")
 
-    d = docx.Document()
-    d.styles["Normal"].font.name = "Calibri"
-    d.styles["Normal"].font.size = Pt(11)
+
+def _docx_timbrado(title: str):
+    import docx
+    from docx.oxml.ns import qn
+
+    if not TIMBRADO_DOCX.is_file():
+        raise FileError("O modelo timbrado não está instalado no plugin. Gere o docx simples.")
+    d = docx.Document(str(TIMBRADO_DOCX))
+    body = d.element.body
+    for el in list(body):
+        if el.tag != qn("w:sectPr"):
+            body.remove(el)
+    # Metadados do modelo (autor, revisão, datas) não passam para o documento gerado.
+    cp = d.core_properties
+    now = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None, microsecond=0)
+    cp.author, cp.last_modified_by, cp.title = "Ambiente Consultoria", "Prisma", title or ""
+    cp.subject = cp.keywords = cp.comments = cp.category = ""
+    cp.revision, cp.created, cp.modified = 1, now, now
+    return d
+
+
+def make_docx(md: str, title: str = "", modelo: str = "simples") -> bytes:
+    import docx
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+    from docx.shared import Pt, Twips
+
+    timbrado = modelo == "timbrado"
+    if timbrado:
+        d = _docx_timbrado(title)
+    else:
+        d = docx.Document()
+        d.styles["Normal"].font.name = "Calibri"
+        d.styles["Normal"].font.size = Pt(11)
     if title:
         d.add_heading(title, level=0)
 
@@ -436,13 +469,29 @@ def make_docx(md: str, title: str = "") -> bytes:
             if style == "code":
                 r.font.name = "Consolas"
 
+    def list_item(marker: str, text: str):
+        # O modelo timbrado não tem os estilos List Bullet/List Number: marcador e recuo pendente no próprio
+        # parágrafo, como na skill requisitos-sefic (recuo 720, pendente 360 twips).
+        par = d.add_paragraph()
+        pf = par.paragraph_format
+        pf.left_indent, pf.first_line_indent, pf.space_after = Twips(720), Twips(-360), Pt(4)
+        pf.tab_stops.add_tab_stop(Twips(720))
+        par.add_run(f"{marker}\t")
+        add_runs(par, text)
+
     for b in md_blocks(md):
         if b[0] == "h":
             add_runs(d.add_heading(level=min(b[1], 4)), b[2])
         elif b[0] == "li":
-            add_runs(d.add_paragraph(style="List Bullet"), b[1])
+            if timbrado:
+                list_item("•", b[1])
+            else:
+                add_runs(d.add_paragraph(style="List Bullet"), b[1])
         elif b[0] == "ol":
-            add_runs(d.add_paragraph(style="List Number"), b[2])
+            if timbrado:
+                list_item(f"{b[1]}.", b[2])
+            else:
+                add_runs(d.add_paragraph(style="List Number"), b[2])
         elif b[0] == "table":
             rows = b[1]
             ncols = max(len(r) for r in rows)
@@ -456,6 +505,15 @@ def make_docx(md: str, title: str = "") -> bytes:
                     if i == 0:
                         for run in cell.paragraphs[0].runs:
                             run.bold = True
+                        if timbrado:
+                            shd = OxmlElement("w:shd")
+                            shd.set(qn("w:val"), "clear")
+                            shd.set(qn("w:color"), "auto")
+                            shd.set(qn("w:fill"), "D9D9D9")
+                            cell._tc.get_or_add_tcPr().append(shd)
+            if timbrado and len(rows) > 1:
+                # Cabeçalho da tabela repete em cada página.
+                t.rows[0]._tr.get_or_add_trPr().append(OxmlElement("w:tblHeader"))
             d.add_paragraph()
         elif b[0] == "hr":
             d.add_paragraph("―" * 30)
@@ -833,10 +891,16 @@ def make_bpmn(processo: dict) -> bytes:
     return xml.encode("utf-8")
 
 
-def generate(fmt: str, title: str, conteudo: str | None, tabela: dict | None, processo: dict | None) -> bytes:
+def generate(fmt: str, title: str, conteudo: str | None, tabela: dict | None, processo: dict | None,
+             modelo: str | None = None) -> bytes:
     fmt = (fmt or "").lower().lstrip(".")
     if fmt not in WRITE_FORMATS:
         raise FileError(f"Formato inválido. Use: {', '.join(WRITE_FORMATS)}.")
+    modelo = (modelo or "simples").strip().lower()
+    if modelo not in DOCX_MODELOS:
+        raise FileError(f"Modelo inválido. Use: {', '.join(DOCX_MODELOS)}.")
+    if modelo == "timbrado" and fmt != "docx":
+        raise FileError("O modelo timbrado só existe para docx. Gere em docx ou tire o modelo.")
     if fmt == "xlsx":
         return make_xlsx(tabela or {})
     if fmt == "bpmn":
@@ -848,4 +912,6 @@ def generate(fmt: str, title: str, conteudo: str | None, tabela: dict | None, pr
         raise FileError("Conteúdo grande demais (até 500 mil caracteres).")
     if fmt == "md":
         return ((f"# {title}\n\n" if title and not md.lstrip().startswith("#") else "") + md).encode("utf-8")
-    return {"txt": make_txt, "html": make_html, "docx": make_docx, "pdf": make_pdf}[fmt](md, title)
+    if fmt == "docx":
+        return make_docx(md, title, modelo)
+    return {"txt": make_txt, "html": make_html, "pdf": make_pdf}[fmt](md, title)
