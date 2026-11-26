@@ -72,6 +72,8 @@ tar cf - -C hermes/skills prisma | ssh iago@187.127.8.245 'mkdir -p /tmp/ps && t
 
 Skills novas ou editadas valem na próxima mensagem (o Hermes relê a pasta), sem reiniciar.
 
+As skills seguem a regra de LF do `.gitattributes`, como o plugin e a rotina: no Windows, com `core.autocrlf`, o `tar` da cópia local levaria CRLF para a VPS. Se a cópia local foi baixada antes dessa regra, renove os arquivos uma vez (`git rm -r --cached -q hermes/skills && git checkout -- hermes/skills`) antes de instalar.
+
 Configuração do `config.yaml`, feita uma vez em 20/11/2026:
 
 - `platform_toolsets.discord` inclui `skills` (só no Discord).
