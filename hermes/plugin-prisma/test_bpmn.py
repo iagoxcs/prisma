@@ -165,6 +165,32 @@ class BpmnVisualTests(unittest.TestCase):
         self.assertIn("## Anotações", text)
         self.assertIn("- ⚠️ GAP: manual, só às terças e quintas (etapa: Registrar boleto no banco)", text)
 
+    def test_leitura_nomeia_juncoes_sem_nome(self):
+        try:
+            import lxml  # noqa: F401
+        except ImportError:
+            self.skipTest("lxml ausente (presente no container do Hermes)")
+        p = {"nome": "P", "raias": ["A"], "elementos": [
+            {"id": "i", "tipo": "inicio", "nome": "Início", "raia": "A"},
+            {"id": "gw_ok", "tipo": "gateway", "nome": "Aprovado?", "raia": "A"},
+            {"id": "t1", "tipo": "tarefa", "nome": "Corrigir", "raia": "A"},
+            {"id": "gw_jx", "tipo": "gateway", "nome": "", "raia": "A"},
+            {"id": "gw_jy", "tipo": "gateway", "raia": "A"},
+            {"id": "e", "tipo": "fim", "nome": "Fim", "raia": "A"}],
+            "fluxos": [{"de": "i", "para": "gw_ok"},
+                       {"de": "gw_ok", "para": "gw_jx", "rotulo": "Sim"},
+                       {"de": "gw_ok", "para": "t1", "rotulo": "Não"},
+                       {"de": "t1", "para": "gw_jx"},
+                       {"de": "gw_jx", "para": "gw_jy"},
+                       {"de": "gw_jy", "para": "e"}]}
+        text = f._bpmn_text(f.make_bpmn(p))
+        self.assertNotIn("gw_jx", text)
+        self.assertNotIn("gw_jy", text)
+        self.assertIn("- [Gateway exclusivo] Junção 1", text)
+        self.assertIn("- Corrigir → Junção 1", text)
+        self.assertIn("- Junção 1 → Junção 2", text)
+        self.assertIn("- [Gateway exclusivo] Aprovado?", text)
+
     def test_muitas_notas_na_mesma_faixa_empilham_sem_sobrepor(self):
         els = [{"id": "i", "tipo": "inicio", "nome": "Início", "raia": "A", "nota": "Nota do início " * 3}]
         fl = []
