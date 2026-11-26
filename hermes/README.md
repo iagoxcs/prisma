@@ -48,7 +48,7 @@ Skills do Hermes: instruções em Markdown (`SKILL.md` com frontmatter `name`, `
 - `prisma/bpmn-generator`: gera o fluxograma `.bpmn` (As Is ou To Be, uma pool com raias) por `prisma_gerar_arquivo`. Criada pelo próprio bot e aprovada por `/skills approve` em 26/11/2026; trazida para o repositório na mesma data.
 - `prisma/status-report`: One Page Report de status em PDF ou Word, a partir das tarefas e do Contexto do projeto. Inclui as regras da OPR semanal da Zuppani.
 - `prisma/analise-indicadores`: lê uma tabela de indicadores, calcula a situação frente à meta e entrega o relatório com título-conclusão em PDF, Word ou Excel.
-- `prisma/lista-requisitos`: Lista de Requisitos de Melhorias para TI em Word (sem timbre).
+- `prisma/lista-requisitos`: Lista de Requisitos de Melhorias para TI em Word, no papel timbrado FOR-AMBT-06 (`modelo: timbrado`, plugin 0.11.0).
 - `prisma/cronograma-para-tarefas`: cronograma de mapeamento por área (cinco etapas) proposto como tarefas no Prisma numa prévia só. Substitui o CSV de importação.
 - `prisma/conselho`: cinco conselheiros analisam uma decisão, fazem revisão cruzada e dão o veredito; relatório completo em PDF opcional.
 - `prisma/prompt-pctf`: revisa ou monta um prompt no método Persona, Contexto, Tarefa e Formato.
